@@ -2,10 +2,16 @@
 // Copyright (c) ibis inc.
 // Additional terms under AGPL-3.0 section 7(b): see NOTICE.
 //! version.txt: a platform, a tab and its version per line (`macOS<TAB>0.8.0`,
-//! `Windows<TAB>0.8.0`, `wasm<TAB>0.8.0`), and comparing versions.
+//! `Windows<TAB>0.8.0`, `wasm<TAB>0.8.0`, `Linux<TAB>0.8.0`), and comparing versions.
 
-/// This platform's name in version.txt and in the zip's file name.
-pub const PLATFORM: &str = if cfg!(target_os = "windows") { "Windows" } else { "macOS" };
+/// This platform's name in version.txt and in the zip's (Linux: the tarball's) file name.
+pub const PLATFORM: &str = if cfg!(target_os = "windows") {
+    "Windows"
+} else if cfg!(target_os = "linux") {
+    "Linux"
+} else {
+    "macOS"
+};
 
 /// `platform`'s version in the text of version.txt.
 pub fn find(text: &str, platform: &str) -> Option<String> {
@@ -45,6 +51,15 @@ mod tests {
         assert_eq!(find(text, "Windows").as_deref(), Some("0.8.1"));
         assert_eq!(find(text, "Linux"), None);
         assert_eq!(find("macOS\t../../etc\n", "macOS"), None);
+    }
+
+    #[test]
+    fn linux_has_a_line_of_its_own() {
+        // Upstream's version.txt has no Linux line: a Linux build that asks it is offered nothing.
+        assert_eq!(find("Windows\t0.9.0\nmacOS\t0.9.0\nwasm\t0.9.0\n", "Linux"), None);
+        assert_eq!(find("Windows\t0.9.0\nmacOS\t0.9.0\nwasm\t0.9.0\nLinux\t0.8.2\n", "Linux").as_deref(), Some("0.8.2"));
+        #[cfg(target_os = "linux")]
+        assert_eq!(PLATFORM, "Linux");
     }
 
     #[test]

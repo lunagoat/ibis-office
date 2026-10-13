@@ -41,6 +41,7 @@ pub(crate) fn open_over(parent: Option<Bounds<Pixels>>, display: Option<DisplayI
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         display_id: display,
         titlebar: Some(TitlebarOptions { title: Some(i18n::text("help.about")), ..Default::default() }),
+        app_id: Some(crate::APP_ID.into()),
         ..Default::default()
     };
     let opened = cx.open_window(options, |window, cx| {

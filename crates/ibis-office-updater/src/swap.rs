@@ -2,8 +2,9 @@
 // Copyright (c) ibis inc.
 // Additional terms under AGPL-3.0 section 7(b): see NOTICE.
 //! Replacing an installed folder with a new one, and putting it back, for
-//! macOS (the `.app`) and Windows (the folder holding `ibisOffice.exe` and
-//! what goes with it). Done here in Rust, not by a script, so that a change
+//! macOS (the `.app`), Windows (the folder holding `ibisOffice.exe` and
+//! what goes with it) and Linux (the `ibisOffice` folder holding the
+//! `ibisOffice` executable). Done here in Rust, not by a script, so that a change
 //! of the steps is a new ibisOfficeUpdater (the one in the new version is
 //! the one that runs). The order is what keeps the
 //! installed copy whole at every moment:
@@ -154,6 +155,31 @@ mod tests {
         rollback(&dir.join("old")).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("old/app.exe")).unwrap(), "old");
         assert!(!backup_of(&dir.join("old")).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Linux: what makes the folder an app is kept by the copy (a program that cannot be run, or a link turned into a file, would be a broken install), and a path that points into the folder still does after the swap.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_copy_keeps_the_executable_bit_and_links() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tree("linux");
+        let executable = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o111 != 0;
+        std::fs::set_permissions(dir.join("new/app.exe"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::os::unix::fs::symlink("sub/data", dir.join("new/link")).unwrap();
+        // The launcher: a link from outside the folder to the program in it.
+        std::os::unix::fs::symlink(dir.join("old/app.exe"), dir.join("launcher")).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("launcher")).unwrap(), "old");
+
+        install(&dir.join("old"), &dir.join("new"), &|staged| if executable(&staged.join("app.exe")) { Ok(()) } else { Err("not executable".into()) }).unwrap();
+        assert!(executable(&dir.join("old/app.exe")));
+        assert!(!executable(&dir.join("old/sub/data")));
+        assert_eq!(std::fs::read_link(dir.join("old/link")).unwrap(), Path::new("sub/data"));
+        assert_eq!(std::fs::read_to_string(dir.join("old/link")).unwrap(), "new data");
+        assert_eq!(std::fs::read_to_string(dir.join("launcher")).unwrap(), "new");
+
+        rollback(&dir.join("old")).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("launcher")).unwrap(), "old");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

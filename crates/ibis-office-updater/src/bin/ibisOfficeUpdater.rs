@@ -9,8 +9,9 @@
 //!                   --version <new version> --log <updater.log> [--workdir <folder to remove>]
 //! ```
 //!
-//! `installed` and `unpacked` are the `.app` folders on macOS and the folders
-//! holding `ibisOffice.exe` on Windows. The steps, each logged as it starts
+//! `installed` and `unpacked` are the `.app` folders on macOS, the folders
+//! holding `ibisOffice.exe` on Windows and the `ibisOffice` folders holding
+//! the `ibisOffice` executable on Linux. The steps, each logged as it starts
 //! and as it succeeds or fails:
 //!
 //! 1. `wait-exit`: wait for ibisOffice to quit (30 s; then end it).
@@ -259,14 +260,64 @@ mod platform {
     }
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(target_os = "linux")]
+mod platform {
+    use super::*;
+    use ibis_office_updater::swap;
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::os::unix::process::CommandExt as _;
+
+    pub type Started = std::process::Child;
+
+    /// The copy must hold both programs, and they must be ones that can be run, before it replaces anything.
+    fn check(dir: &Path) -> Result<(), String> {
+        for name in ["ibisOffice", "ibisOfficeUpdater"] {
+            let file = dir.join(name);
+            let meta = std::fs::metadata(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            if !meta.is_file() || meta.permissions().mode() & 0o111 == 0 {
+                return Err(format!("{} is not an executable file", file.display()));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn install(old: &Path, new: &Path) -> Result<(), String> {
+        swap::install(old, new, &check)
+    }
+
+    pub fn rollback(old: &Path, _: &Path) -> Result<(), String> {
+        swap::rollback(old)
+    }
+
+    pub fn cleanup(old: &Path, _: &Path) -> Result<(), String> {
+        swap::cleanup(old)
+    }
+
+    pub fn launch(dir: &Path) -> Result<Started, String> {
+        let exe = dir.join("ibisOffice");
+        // A process group of its own: Ctrl-C in the terminal the old ibisOffice was started from is not for the new one.
+        Command::new(&exe).current_dir(dir).process_group(0).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| format!("{}: {e}", exe.display()))
+    }
+
+    /// Still running 3 seconds after it was started.
+    pub fn check_running(_: &Path, child: &mut Started) -> Result<(), String> {
+        std::thread::sleep(Duration::from_secs(3));
+        match child.try_wait() {
+            Ok(None) => Ok(()),
+            Ok(Some(status)) => Err(format!("ibisOffice quit within 3 seconds of starting ({status})")),
+            Err(err) => Err(format!("cannot tell whether ibisOffice runs: {err}")),
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
 mod platform {
     use super::*;
 
     pub struct Started;
 
     fn unsupported<T>() -> Result<T, String> {
-        Err("ibisOfficeUpdater runs on macOS and Windows only".into())
+        Err("ibisOfficeUpdater runs on macOS, Windows and Linux only".into())
     }
 
     pub fn install(_: &Path, _: &Path) -> Result<(), String> {

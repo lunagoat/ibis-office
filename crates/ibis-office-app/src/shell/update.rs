@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) ibis inc.
 // Additional terms under AGPL-3.0 section 7(b): see NOTICE.
-//! Automatic update (todo-fix #35; macOS and Windows).
+//! Automatic update (todo-fix #35; macOS, Windows and Linux).
 //!
 //! At startup (ツール > 設定… > 起動時に更新を確かめる, on unless turned off) a
 //! background task reads version.txt on GitHub. If this platform's version
@@ -18,14 +18,32 @@
 //!   --strict`, `spctl -a -t exec`) before anything in it is run.
 //! - Windows (no code signature yet): the zip's SHA-256 must equal the one in
 //!   the `.sha256` file beside it on the Releases page.
+//! - Linux (no signature either): as Windows, with a tarball in place of the
+//!   zip, `ibisOffice-<version>-Linux-<arch>.tar.gz` (scripts/bundle-linux.sh)
+//!   and its `.sha256`. What is replaced is the `ibisOffice` folder the
+//!   executable is in (where the tarball's install.sh put it), so the
+//!   launcher's link into that folder stays good.
 //! - Not done: from a build run out of `target/`, from a folder the user
-//!   cannot write to, or from macOS's App Translocation (the log says which,
-//!   and a window asks to install it again by hand).
+//!   cannot write to (on Linux a system-wide install, which whoever installed
+//!   it keeps up to date), from macOS's App Translocation, or on Linux from an
+//!   executable that is not in an `ibisOffice` folder beside its
+//!   `ibisOfficeUpdater`, or whose folder is `$XDG_DATA_HOME/ibisOffice`, where
+//!   the user's own files are (the log says which, and a window asks to
+//!   install it again by hand).
 //! - Two attempts at one version that did not end in that version running
 //!   stop the offers (a window says so once).
 //!
+//! The GitHub repository asked is ibis inc.'s, `ibisjp/ibis-office`. Its
+//! version.txt has no `Linux` line, so a Linux build that asks it is offered
+//! nothing. Whoever publishes builds of their own names their repository
+//! when building, in the environment of `cargo build` (read at compile time;
+//! scripts/bundle-linux.sh passes it on): `IBIS_UPDATE_REPO=owner/repo`, and
+//! `IBIS_UPDATE_BRANCH` for the branch whose version.txt is read if it is
+//! not `main`. The releases are then that repository's, tagged `v<version>`.
+//!
 //! Every step goes to `updater.log` (`ibis_office_updater::log`). Downloading
-//! and unpacking use the system's `curl` and `ditto` (`tar` on Windows).
+//! and unpacking use the system's `curl` and `ditto` (`tar` on Windows and
+//! Linux, where the hash is `sha256sum`'s).
 //! For the tests: `IBIS_UPDATE_URL_BASE` replaces the GitHub addresses,
 //! `IBIS_UPDATE_DIR` the folders of the files, `IBIS_UPDATE_AUTO_YES=1`
 //! answers 「はい」, and `IBIS_UPDATE_SKIP_SIGNATURE=1` skips the signature
@@ -43,8 +61,19 @@ use crate::shell::{i18n, settings};
 
 /// This build's version (version.txt's line for this platform at build time).
 const CURRENT: &str = env!("IBIS_VERSION");
-const VERSION_URL: &str = "https://raw.githubusercontent.com/ibisjp/ibis-office/main/version.txt";
-const RELEASES_URL: &str = "https://github.com/ibisjp/ibis-office/releases";
+/// The GitHub repository asked for version.txt and the releases: ibis inc.'s, or the one named when building (`IBIS_UPDATE_REPO=owner/repo`).
+const REPO: &str = match option_env!("IBIS_UPDATE_REPO") {
+    Some(repo) if !repo.is_empty() => repo,
+    _ => "ibisjp/ibis-office",
+};
+/// The branch whose version.txt is read (`IBIS_UPDATE_BRANCH` when building).
+const BRANCH: &str = match option_env!("IBIS_UPDATE_BRANCH") {
+    Some(branch) if !branch.is_empty() => branch,
+    _ => "main",
+};
+// A name typed wrong stops the build: it would otherwise be a release that never finds an update, without a word.
+const _: () = assert!(matches!(slashes(REPO), Some(1)), "IBIS_UPDATE_REPO must be owner/repo");
+const _: () = assert!(slashes(BRANCH).is_some(), "IBIS_UPDATE_BRANCH must be the name of a branch");
 /// Attempts at one version after which no more offers are made.
 const MAX_ATTEMPTS: u32 = 2;
 /// ibis inc.'s Apple developer team.
@@ -66,6 +95,36 @@ pub(crate) fn set_check_enabled(on: bool) {
 
 fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
+}
+
+/// How many slashes separate the names in `text` (`owner/repo`: one), or `None` if it is anything but names of letters, digits, `.`, `_` and `-` with slashes between them: it goes into an address as it is.
+const fn slashes(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let (mut i, mut count, mut name) = (0, 0, 0);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'/' if name > 0 => {
+                count += 1;
+                name = 0;
+            }
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'.' | b'_' | b'-' => name += 1,
+            _ => return None,
+        }
+        i += 1;
+    }
+    if name > 0 { Some(count) } else { None }
+}
+
+fn version_url() -> String {
+    match env("IBIS_UPDATE_URL_BASE") {
+        Some(base) => format!("{}/version.txt", base.trim_end_matches('/')),
+        None => format!("https://raw.githubusercontent.com/{REPO}/{BRANCH}/version.txt"),
+    }
+}
+
+/// The page a new version is downloaded from by hand.
+fn releases_url() -> String {
+    format!("https://github.com/{REPO}/releases")
 }
 
 fn log_for(version: &str) -> Option<Log> {
@@ -127,7 +186,7 @@ fn check() -> Found {
     clear_attempts_if_updated();
 
     log.start("check", &format!("current {CURRENT}"));
-    let url = env("IBIS_UPDATE_URL_BASE").map(|base| format!("{}/version.txt", base.trim_end_matches('/'))).unwrap_or_else(|| VERSION_URL.to_string());
+    let url = version_url();
     let text = match fetch_text(&url) {
         Ok(text) => text,
         Err(err) => {
@@ -203,7 +262,20 @@ fn clear_attempts_if_updated() {
 
 // ---- Where this copy is installed --------------------------------------
 
-/// The installed copy to replace: the `.app` (macOS) or the folder of `ibisOffice.exe` (Windows), or why it cannot be.
+/// The programs' names in the folder a Windows zip or a Linux tarball holds.
+#[cfg(not(target_os = "macos"))]
+const APP_EXE: &str = if cfg!(windows) { "ibisOffice.exe" } else { "ibisOffice" };
+#[cfg(not(target_os = "macos"))]
+const UPDATER_EXE: &str = if cfg!(windows) { "ibisOfficeUpdater.exe" } else { "ibisOfficeUpdater" };
+
+/// Linux: `$XDG_DATA_HOME/ibisOffice` (with no link in its path), where the user's own files are kept: recent files, AutoRecover, chart templates (shell/recent_files.rs, xlsx/autorecover.rs, xlsx/chart_template.rs).
+#[cfg(target_os = "linux")]
+fn user_data_folder() -> Option<PathBuf> {
+    let base = env("XDG_DATA_HOME").map(PathBuf::from).or_else(|| env("HOME").map(|home| Path::new(&home).join(".local/share")))?;
+    base.join("ibisOffice").canonicalize().ok()
+}
+
+/// The installed copy to replace: the `.app` (macOS), the folder of `ibisOffice.exe` (Windows) or the `ibisOffice` folder of the executable (Linux), or why it cannot be.
 fn installed_copy() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let exe = exe.canonicalize().unwrap_or(exe);
@@ -225,6 +297,16 @@ fn installed_copy() -> Result<PathBuf, String> {
     };
     #[cfg(not(target_os = "macos"))]
     let app = exe.parent().map(Path::to_path_buf).ok_or("no folder")?;
+    // Linux: the whole folder is replaced, so it must be the one a tarball holds (put in place by install.sh, or unpacked and run where it is), not a folder of other things the executable was copied into.
+    #[cfg(target_os = "linux")]
+    if app.file_name().is_none_or(|name| name != "ibisOffice") || !app.join(UPDATER_EXE).is_file() {
+        return Err(format!("{} is not in an ibisOffice folder beside its {UPDATER_EXE}", exe.display()));
+    }
+    // Nor the folder the user's own files are kept in, which a tarball unpacked in the data folder shares: they would go with the old copy.
+    #[cfg(target_os = "linux")]
+    if user_data_folder().is_some_and(|data| data == app) {
+        return Err(format!("{} is also where ibisOffice keeps your own files (install.sh installs it elsewhere)", app.display()));
+    }
     let parent = app.parent().ok_or("no parent folder")?;
     let probe = parent.join(format!(".ibis-update-probe-{}", std::process::id()));
     match std::fs::write(&probe, b"") {
@@ -275,13 +357,18 @@ fn fetch_text(url: &str) -> Result<String, String> {
 }
 
 fn zip_name(version: &str) -> String {
-    format!("ibisOffice-{version}-{}.zip", version::PLATFORM)
+    if cfg!(target_os = "linux") {
+        // A tarball for each kind of processor, named as `uname -m` names it (scripts/bundle-linux.sh): x86_64, aarch64.
+        format!("ibisOffice-{version}-{}-{}.tar.gz", version::PLATFORM, std::env::consts::ARCH)
+    } else {
+        format!("ibisOffice-{version}-{}.zip", version::PLATFORM)
+    }
 }
 
 fn zip_url(version: &str) -> String {
     match env("IBIS_UPDATE_URL_BASE") {
         Some(base) => format!("{}/{}", base.trim_end_matches('/'), zip_name(version)),
-        None => format!("https://github.com/ibisjp/ibis-office/releases/download/v{version}/{}", zip_name(version)),
+        None => format!("{}/download/v{version}/{}", releases_url(), zip_name(version)),
     }
 }
 
@@ -291,6 +378,15 @@ fn parse_sha256(text: &str) -> Option<String> {
     (word.len() == 64 && word.bytes().all(|b| b.is_ascii_hexdigit())).then_some(word)
 }
 
+/// Linux: coreutils' `sha256sum` (`shasum` is a Perl script that not every distribution installs). The file is its input, so that what it prints is the hash and no file name (which it would escape).
+#[cfg(target_os = "linux")]
+fn sha256_of(file: &Path) -> Result<String, String> {
+    let input = std::fs::File::open(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let out = run(command("sha256sum").stdin(input))?;
+    parse_sha256(&out).ok_or_else(|| format!("no hash in the output: {out}"))
+}
+
+#[cfg(not(target_os = "linux"))]
 fn sha256_of(file: &Path) -> Result<String, String> {
     #[cfg(windows)]
     let out = run(command("certutil").args(["-hashfile"]).arg(file).arg("SHA256"))?;
@@ -303,7 +399,7 @@ fn sha256_of(file: &Path) -> Result<String, String> {
         .ok_or_else(|| format!("no hash in the output: {out}"))
 }
 
-/// Download `version`'s zip into its update folder; on Windows it must match its `.sha256`.
+/// Download `version`'s zip into its update folder; on Windows and Linux it must match its `.sha256`.
 fn download(log: &Log, version: &str) -> Result<PathBuf, String> {
     let dir = paths::update_dir(version).ok_or("no folder for the update")?;
     let _ = std::fs::remove_dir_all(&dir);
@@ -321,7 +417,7 @@ fn download(log: &Log, version: &str) -> Result<PathBuf, String> {
     let size = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
     log.ok("download", &format!("{size} bytes"));
 
-    if cfg!(windows) {
+    if cfg!(any(windows, target_os = "linux")) {
         log.start("verify-hash", "SHA-256 against the .sha256 file");
         let verified = (|| {
             let expected = parse_sha256(&fetch_text(&format!("{url}.sha256"))?).ok_or("the .sha256 file has no hash")?;
@@ -359,7 +455,7 @@ fn run_stderr(command: &mut Command) -> String {
 
 /// Unpacked and checked: the new copy and the updater inside it.
 struct Unpacked {
-    /// The new `.app` (macOS) or folder (Windows).
+    /// The new `.app` (macOS) or folder (Windows, Linux).
     new: PathBuf,
     updater: PathBuf,
 }
@@ -410,11 +506,11 @@ fn unpack(log: &Log, version: &str, zip: &Path) -> Result<Unpacked, String> {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = version;
-        // The zip holds one folder, ibisOffice\ (ibisOffice.exe, ibisOfficeUpdater.exe, Resources\).
-        let folder = std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten().map(|e| e.path()).find(|p| p.join("ibisOffice.exe").is_file()).ok_or("the zip has no folder with ibisOffice.exe")?;
-        let updater = folder.join("ibisOfficeUpdater.exe");
+        // The zip holds one folder, ibisOffice\ (ibisOffice.exe, ibisOfficeUpdater.exe, Resources\); a Linux tarball the same, its programs named without `.exe`.
+        let folder = std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten().map(|e| e.path()).find(|p| p.join(APP_EXE).is_file()).ok_or(format!("the zip has no folder with {APP_EXE}"))?;
+        let updater = folder.join(UPDATER_EXE);
         if !updater.is_file() {
-            return Err("the new folder has no ibisOfficeUpdater.exe".into());
+            return Err(format!("the new folder has no {UPDATER_EXE}"));
         }
         log.ok("verify-app", &folder.display().to_string());
         Ok(Unpacked { new: folder, updater })
@@ -451,10 +547,11 @@ async fn prompt(cx: &mut AsyncApp, level: PromptLevel, message: String, detail: 
 
 async fn show_failed(cx: &mut AsyncApp) {
     let log = paths::log_file().map(|p| p.display().to_string()).unwrap_or_default();
-    let detail = format!("{}\n\n{}", i18n::format("fix.update.failed.detail", &[("url", &RELEASES_URL)]), i18n::format("fix.update.log-path", &[("log", &log)]));
+    let url = releases_url();
+    let detail = format!("{}\n\n{}", i18n::format("fix.update.failed.detail", &[("url", &url)]), i18n::format("fix.update.log-path", &[("log", &log)]));
     let buttons = vec![PromptButton::ok(i18n::text("fix.update.open-site")), PromptButton::cancel("OK")];
     if prompt(cx, PromptLevel::Warning, i18n::text("fix.update.failed").to_string(), detail, buttons).await == Some(0) {
-        cx.update(|cx| cx.open_url(RELEASES_URL));
+        cx.update(|cx| cx.open_url(&url));
     }
 }
 
@@ -537,6 +634,9 @@ fn start_updater(log: &Log, version: &str, unpacked: &Unpacked) -> Result<(), St
         .current_dir(std::env::temp_dir())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    // Linux: a process group of its own, so that Ctrl-C in the terminal ibisOffice was started from does not end the updater in the middle of the swap.
+    #[cfg(target_os = "linux")]
+    std::os::unix::process::CommandExt::process_group(&mut updater, 0);
     updater.spawn().map_err(|e| format!("{}: {e}", unpacked.updater.display()))?;
     log.ok("start-updater", "started; ibisOffice quits now");
     Ok(())
@@ -558,6 +658,25 @@ mod tests {
     #[test]
     fn the_zip_is_named_for_the_version_and_platform() {
         let name = zip_name("0.9.0");
+        #[cfg(not(target_os = "linux"))]
         assert!(name == "ibisOffice-0.9.0-macOS.zip" || name == "ibisOffice-0.9.0-Windows.zip");
+        // Linux: a tarball, named for the processor as well.
+        #[cfg(target_os = "linux")]
+        assert!(name == "ibisOffice-0.9.0-Linux-x86_64.tar.gz" || name == "ibisOffice-0.9.0-Linux-aarch64.tar.gz");
+    }
+
+    #[test]
+    fn the_repository_asked_is_two_names() {
+        assert_eq!(slashes("ibisjp/ibis-office"), Some(1));
+        assert_eq!(slashes("main"), Some(0));
+        assert_eq!(slashes("release/linux"), Some(1));
+        for bad in ["", "owner/", "/repo", "owner//repo", "https://github.com/owner/repo", "owner/repo name"] {
+            assert_eq!(slashes(bad), None, "{bad}");
+        }
+        // Not asked through `IBIS_UPDATE_URL_BASE` (the tests' server): GitHub, over https.
+        if env("IBIS_UPDATE_URL_BASE").is_none() {
+            assert_eq!(version_url(), format!("https://raw.githubusercontent.com/{REPO}/{BRANCH}/version.txt"));
+            assert_eq!(zip_url("0.9.0"), format!("https://github.com/{REPO}/releases/download/v0.9.0/{}", zip_name("0.9.0")));
+        }
     }
 }

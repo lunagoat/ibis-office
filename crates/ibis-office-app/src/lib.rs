@@ -414,6 +414,13 @@ pub fn open_editor(document: Option<(ibis_doc_model::Presentation, SharedString)
     });
 }
 
+/// The identifier every window is given (the macOS bundle's, scripts/bundle-macos.sh).
+/// On Linux a Wayland compositor (the window's app id) and an X11 window
+/// manager (WM_CLASS) find a window's `.desktop` file by it, for the icon and
+/// the grouping in the taskbar: the file is `jp.ne.ibis.office.desktop`
+/// (scripts/bundle-linux.sh). Nothing reads it on macOS and Windows.
+pub(crate) const APP_ID: &str = "jp.ne.ibis.office";
+
 /// A new editor window, its editor set up by `setup`.
 pub(crate) fn open_window_with(cx: &mut App, setup: impl FnOnce(&mut SlideEditor, &mut Window, &mut Context<SlideEditor>) + 'static) {
     let options = WindowOptions {
@@ -422,6 +429,7 @@ pub(crate) fn open_window_with(cx: &mut App, setup: impl FnOnce(&mut SlideEditor
             size(px(1280.), px(800.)),
             cx,
         ))),
+        app_id: Some(APP_ID.into()),
         ..Default::default()
     };
     cx.open_window(options, |window, cx| {
