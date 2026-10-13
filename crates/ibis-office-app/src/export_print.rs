@@ -185,42 +185,42 @@ pub fn notes_pages(slides: &[RgbaImage], notes: &[NoteText], marks: &HandoutMark
         .collect()
 }
 
-#[cfg(all(target_os = "macos", feature = "export"))]
+#[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "export"))]
 type NotesFlow = Option<crate::export_text::NoteFlow>;
-#[cfg(not(all(target_os = "macos", feature = "export")))]
+#[cfg(not(all(any(target_os = "macos", target_os = "linux"), feature = "export")))]
 type NotesFlow = ();
 
-#[cfg(all(target_os = "macos", feature = "export"))]
+#[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "export"))]
 fn start_notes(text: Option<&NoteText>) -> NotesFlow {
     text.and_then(|t| crate::export_text::NoteFlow::new(t, PX_PER_PT))
 }
 
-#[cfg(not(all(target_os = "macos", feature = "export")))]
+#[cfg(not(all(any(target_os = "macos", target_os = "linux"), feature = "export")))]
 fn start_notes(_: Option<&NoteText>) -> NotesFlow {}
 
-#[cfg(all(target_os = "macos", feature = "export"))]
+#[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "export"))]
 fn draw_notes(flow: &mut NotesFlow, page: &mut RgbaImage, rect: (f32, f32, f32, f32)) {
     if let Some(flow) = flow {
         flow.draw_next(page, rect);
     }
 }
 
-#[cfg(not(all(target_os = "macos", feature = "export")))]
+#[cfg(not(all(any(target_os = "macos", target_os = "linux"), feature = "export")))]
 fn draw_notes(_: &mut NotesFlow, _: &mut RgbaImage, _: (f32, f32, f32, f32)) {}
 
-#[cfg(all(target_os = "macos", feature = "export"))]
+#[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "export"))]
 fn notes_left(flow: &NotesFlow) -> bool {
     flow.as_ref().is_some_and(|f| f.has_more())
 }
 
-#[cfg(not(all(target_os = "macos", feature = "export")))]
+#[cfg(not(all(any(target_os = "macos", target_os = "linux"), feature = "export")))]
 fn notes_left(_: &NotesFlow) -> bool {
     false
 }
 
 /// The header, date, footer and page number of a handout page: where the
 /// handout master puts them, or in the margins' corners.
-#[cfg(all(target_os = "macos", feature = "export"))]
+#[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "export"))]
 fn draw_marks(page: &mut RgbaImage, marks: &HandoutMarks, number: usize, (page_w, page_h): (f32, f32)) {
     use crate::export_text::{draw_text, Align};
     use ibis_pptx::handout_master::Mark;
@@ -267,7 +267,7 @@ fn draw_marks(page: &mut RgbaImage, marks: &HandoutMarks, number: usize, (page_w
     }
 }
 
-#[cfg(not(all(target_os = "macos", feature = "export")))]
+#[cfg(not(all(any(target_os = "macos", target_os = "linux"), feature = "export")))]
 fn draw_marks(_: &mut RgbaImage, _: &HandoutMarks, _: usize, _: (f32, f32)) {}
 
 #[cfg(test)]
@@ -295,7 +295,7 @@ mod tests {
     }
 
     /// ノート ページ: the slide on top, framed, with the notes' text below it.
-    #[cfg(all(target_os = "macos", feature = "export"))]
+    #[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "export"))]
     #[test]
     fn notes_pages_have_the_slide_above_and_its_notes_below() {
         let slides = vec![solid(160, 90, [200, 0, 0]), solid(160, 90, [0, 0, 200]), solid(160, 90, [0, 200, 0])];
@@ -353,7 +353,7 @@ mod tests {
     }
 
     /// The handout master's places: the header where the master puts it, big, the footer gone.
-    #[cfg(all(target_os = "macos", feature = "export"))]
+    #[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "export"))]
     #[test]
     fn marks_go_where_the_handout_master_puts_them() {
         use ibis_pptx::handout_master::{HandoutLayout, Mark, Place};

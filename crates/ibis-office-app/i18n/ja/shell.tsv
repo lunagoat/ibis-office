@@ -710,3 +710,6 @@ _shell.close-slide-master-view-and-notes-formatting-bef	スライド マスタ�
 _shell.could-not-create-the-gif	GIF を作れませんでした
 _shell.exporting-png	PNG に書き出しています…
 _shell.exporting-gif	GIF に書き出しています…
+file.print-sent	プリンターに送信しました
+file.print-cancelled	印刷をキャンセルしました
+file.print-opened-viewer	PDF ビューアーで開きました。そこから印刷してください

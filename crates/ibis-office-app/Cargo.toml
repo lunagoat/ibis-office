@@ -68,14 +68,25 @@ core-graphics = "0.24"
 [target.'cfg(windows)'.dependencies]
 gpui-pre-windows = { version = "=0.3.6", features = ["test-support"], optional = true }
 
+# For the `export` feature on Linux: the headless wgpu renderer of this
+# port's fork of GPUI's wgpu renderer (GPUI has none for Linux).
+[target.'cfg(target_os = "linux")'.dependencies]
+gpui-pre-wgpu = { version = "=0.3.6", features = ["test-support"], optional = true }
+# Text drawn on a handout page (export_text_linux.rs): the text engine GPUI's
+# Linux platform already uses.
+cosmic-text = { version = "0.19.0", optional = true }
+# Printing (shell/print_linux.rs): the desktop's print dialog, through the XDG
+# desktop portal GPUI's Linux platform already talks to for its file dialogs.
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "print"] }
+
 [features]
 default = ["export"]
 # The scenario tests' driver (`src/shell/scenario.rs`), for tests/scenarios.rs;
 # turned on for this crate's own tests by the dev-dependency below.
 scenarios = ["export"]
-# `--export png|pdf|pdf-image|ui` on the command line (macOS and Windows;
-# build.rs sets `cfg(headless_export)` for it).
-export = ["dep:gpui-pre-platform", "dep:gpui-pre-windows", "dep:image", "dep:miniz_oxide", "dep:krilla", "dep:skrifa", "dep:subsetter", "dep:gpui-pre-macos"]
+# `--export png|pdf|pdf-image|ui` on the command line (macOS, Windows and
+# Linux; build.rs sets `cfg(headless_export)` for it).
+export = ["dep:gpui-pre-platform", "dep:gpui-pre-windows", "dep:gpui-pre-wgpu", "dep:cosmic-text", "dep:image", "dep:miniz_oxide", "dep:krilla", "dep:skrifa", "dep:subsetter", "dep:gpui-pre-macos"]
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 # Reading a fetched response's body (the art borders' pictures); the version

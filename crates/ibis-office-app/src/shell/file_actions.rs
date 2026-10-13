@@ -659,7 +659,38 @@ impl SlideEditor {
             })
             .detach();
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "linux")]
+        {
+            use crate::shell::print_linux::Printed;
+            let (stem, _) = self.name_parts();
+            let pdf = std::env::temp_dir().join(format!("{stem}.pdf"));
+            let job = match self.write_pdf_with(pdf, true) {
+                Ok(job) => job,
+                Err(err) => return self.report(Err(crate::shell::i18n::format("file.print-failed", &[("error", &err)])), cx),
+            };
+            self.report(Ok(crate::shell::i18n::text("_shell.preparing-to-print").into()), cx);
+            // The desktop's print dialog (see `print_linux`), with the PDF made on another thread.
+            let task = cx.background_executor().spawn(async move {
+                let pdf = job()?;
+                crate::shell::print_linux::print(&pdf, &stem).await
+            });
+            cx.spawn_in(window, async move |this, cx| {
+                let result = task.await;
+                let said = result
+                    .map(|printed| {
+                        crate::shell::i18n::text(match printed {
+                            Printed::Sent => "file.print-sent",
+                            Printed::Cancelled => "file.print-cancelled",
+                            Printed::Viewer => "file.print-opened-viewer",
+                        })
+                        .to_string()
+                    })
+                    .map_err(|e| crate::shell::i18n::format("file.print-failed", &[("error", &e)]));
+                this.update(cx, |this, cx| this.report(said, cx)).ok();
+            })
+            .detach();
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
             let _ = window;
             self.report(Err(crate::shell::i18n::text("_shell.printing-is-not-yet-available-in-this-environmen").into()), cx);

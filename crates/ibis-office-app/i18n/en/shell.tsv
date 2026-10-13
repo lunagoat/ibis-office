@@ -712,3 +712,6 @@ _shell.close-slide-master-view-and-notes-formatting-bef	Close Slide Master View 
 _shell.could-not-create-the-gif	Could not create the GIF.
 _shell.exporting-png	Exporting PNG…
 _shell.exporting-gif	Exporting GIF…
+file.print-sent	Sent to the printer
+file.print-cancelled	Printing was cancelled
+file.print-opened-viewer	Opened in the PDF viewer. Print from there.

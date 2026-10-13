@@ -22,8 +22,34 @@ pub(crate) fn default_user_name() -> &'static str {
         {
             return name.trim().to_string();
         }
+        #[cfg(target_os = "linux")]
+        if let Some(name) = linux_full_name() {
+            return name;
+        }
         ["USER", "USERNAME"].iter().find_map(|v| std::env::var(v).ok().filter(|u| !u.is_empty())).unwrap_or_else(|| "ibisOffice".into())
     })
+}
+
+/// The user's full name on Linux: the first part of the GECOS field of the
+/// account (`getent passwd`, which also asks the directories a network login
+/// comes from), if it has one.
+#[cfg(target_os = "linux")]
+fn linux_full_name() -> Option<String> {
+    let user = std::env::var("USER").ok().filter(|u| !u.is_empty())?;
+    let out = std::process::Command::new("getent").args(["passwd", &user]).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    full_name_of(&String::from_utf8(out.stdout).ok()?)
+}
+
+/// The full name in a line of the passwd database (`name:x:uid:gid:GECOS:home:shell`):
+/// what its GECOS field holds before the first comma.
+#[cfg(any(target_os = "linux", test))]
+fn full_name_of(passwd_line: &str) -> Option<String> {
+    let gecos = passwd_line.lines().next()?.split(':').nth(4)?;
+    let name = gecos.split(',').next()?.trim();
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 /// The user's name: custom override if set, else system default.
@@ -87,5 +113,15 @@ mod tests {
         assert_eq!(initials("Taro Test"), "TT");
         assert_eq!(initials("山田 花子"), "山");
         assert_eq!(initials("yamada"), "Y");
+    }
+
+    #[test]
+    fn full_name_of_a_passwd_line() {
+        use super::full_name_of;
+        assert_eq!(full_name_of("taro:x:1000:1000:Taro Test,Room 1,555-0100:/home/taro:/bin/bash\n").as_deref(), Some("Taro Test"));
+        assert_eq!(full_name_of("hanako:x:1001:1001:山田 花子:/home/hanako:/bin/sh").as_deref(), Some("山田 花子"));
+        // An account without a full name, and no answer at all.
+        assert_eq!(full_name_of("svc:x:999:999::/var/lib/svc:/usr/bin/nologin"), None);
+        assert_eq!(full_name_of(""), None);
     }
 }

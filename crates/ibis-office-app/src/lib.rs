@@ -25,6 +25,9 @@ mod export;
 mod export_print;
 #[cfg(all(target_os = "macos", feature = "export"))]
 mod export_text;
+#[cfg(all(target_os = "linux", feature = "export"))]
+#[path = "export_text_linux.rs"]
+mod export_text;
 #[cfg(headless_export)]
 mod pdf_vector;
 #[cfg(headless_export)]
@@ -592,7 +595,7 @@ fn run_export(args: &Args, format: &str) -> Result<(), String> {
     #[cfg(not(headless_export))]
     {
         let _ = (args, format);
-        Err("this executable cannot export (build it on macOS or Windows with --features export)".into())
+        Err("this executable cannot export (build it on macOS, Windows or Linux with --features export)".into())
     }
 }
 
@@ -770,7 +773,23 @@ mod timing {
         crate::clock::system_now().duration_since(start).ok().filter(|d| *d < Duration::from_secs(60)).map(|_| start)
     }
 
-    #[cfg(not(target_os = "macos"))]
+    /// When this process was started, from `/proc/self/stat` (Linux): its
+    /// 22nd field is the start in clock ticks since the system started, which
+    /// `/proc/uptime` places against now.
+    #[cfg(target_os = "linux")]
+    fn process_start() -> Option<SystemTime> {
+        // The kernel reports times to user space in ticks of 1/100 s (USER_HZ), whatever its own.
+        const TICKS_PER_SECOND: f64 = 100.0;
+        let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+        // The command (the 2nd field, in parentheses) may hold spaces: count from after it.
+        let ticks: f64 = stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()?;
+        let uptime: f64 = std::fs::read_to_string("/proc/uptime").ok()?.split_whitespace().next()?.parse().ok()?;
+        let age = Duration::try_from_secs_f64(uptime - ticks / TICKS_PER_SECOND).ok()?;
+        // Sanity: within the last minute.
+        (age < Duration::from_secs(60)).then(|| crate::clock::system_now().checked_sub(age)).flatten()
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     fn process_start() -> Option<SystemTime> {
         None
     }

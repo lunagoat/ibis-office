@@ -57,6 +57,13 @@ fn wheel_scroll_lines() -> f32 {
     if ok { lines.max(1) as f32 } else { 3.0 }
 }
 
+/// The lines GPUI's Linux platform reports for a notch of the wheel (its
+/// `SCROLL_LINES`, on Wayland and on X11 alike).
+#[cfg(target_os = "linux")]
+fn wheel_scroll_lines() -> f32 {
+    3.0
+}
+
 /// How often to look for newly decoded pictures, in milliseconds: a frame.
 const PICTURE_POLL_MS: u64 = 16;
 
@@ -327,8 +334,8 @@ pub struct SlideEditor {
     /// Time of the last pixel scroll, in milliseconds (browser only).
     #[cfg(target_family = "wasm")]
     wheel_at: f64,
-    /// Parts of a wheel notch not yet turned into a page (Windows only).
-    #[cfg(target_os = "windows")]
+    /// Parts of a wheel notch not yet turned into a page (Windows and Linux only).
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     wheel_notches: f32,
     pub(crate) document: Document,
     pub(crate) current_slide: SlideId,
@@ -538,7 +545,7 @@ impl SlideEditor {
             menu_dismissed_at: None,
             #[cfg(target_family = "wasm")]
             wheel_at: f64::NEG_INFINITY,
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
             wheel_notches: 0.0,
             document: Document::new(presentation),
             current_slide,
@@ -2730,7 +2737,7 @@ impl SlideEditor {
 
     /// The pages `lines` of a wheel turn (down if positive): a line one page,
     /// with nothing held over.
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     fn wheel_line_pages(&mut self, lines: f32) -> i32 {
         let pages = lines.round() as i32;
         if pages == 0 && lines != 0.0 { if lines > 0.0 { 1 } else { -1 } } else { pages }
@@ -2739,7 +2746,8 @@ impl SlideEditor {
     /// The pages `lines` of a wheel turn (down if positive): a notch one page.
     /// Windows reports a notch as the lines the system scrolls for it (3 by
     /// default), and a high-resolution wheel parts of a notch, which add up.
-    #[cfg(target_os = "windows")]
+    /// GPUI's Linux platform does the same, with 3 lines to a notch.
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     fn wheel_line_pages(&mut self, lines: f32) -> i32 {
         let notches = lines / wheel_scroll_lines();
         // A change of direction starts over.

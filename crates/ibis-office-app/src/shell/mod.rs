@@ -34,6 +34,8 @@ pub(crate) mod spell_panel;
 pub(crate) mod symbols;
 pub(crate) mod user_name;
 pub(crate) mod save;
+#[cfg(target_os = "linux")]
+pub(crate) mod print_linux;
 #[cfg(all(target_os = "macos", feature = "scenarios"))]
 pub(crate) mod scenario;
 #[cfg(all(target_os = "macos", feature = "scenarios"))]

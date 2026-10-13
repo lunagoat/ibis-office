@@ -23,8 +23,13 @@ gpui-kit = "=0.6.6"
 # Window::paint_glyph_transformed for rotated text and more; gpui-pre-macos and
 # gpui-pre-web fix text on macOS and in the browser (full-width Japanese
 # symbols). They are git submodules under forks/; see AGENTS.md.
+#
+# gpui-pre-wgpu (the renderer of GPUI's Linux platform) is this Linux port's
+# own fork, kept in this repository: it adds WgpuHeadlessRenderer, which draws
+# without a window, for `--export` on Linux.
 [patch.crates-io]
 gpui-pre = { path = "forks/gpui-pre" }
 gpui-pre-macos = { path = "forks/gpui-pre-macos" }
 gpui-pre-web = { path = "forks/gpui-pre-web" }
+gpui-pre-wgpu = { path = "forks/gpui-pre-wgpu" }
 gpui-pre-windows = { path = "forks/gpui-pre-windows" }

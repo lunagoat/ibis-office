@@ -2803,8 +2803,6 @@ dependencies = [
 [[package]]
 name = "gpui-pre-wgpu"
 version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05515b32799b1767d69300921c1b562cd53104965211a0e8905acdc7aa18e693"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2813,6 +2811,7 @@ dependencies = [
  "gpui-pre",
  "gpui-pre-collections",
  "gpui-pre-util",
+ "image",
  "itertools 0.14.0",
  "log",
  "parking_lot",
@@ -3231,15 +3230,18 @@ dependencies = [
 name = "ibis-office-app"
 version = "0.8.0"
 dependencies = [
+ "ashpd",
  "console_error_panic_hook",
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",
  "core-text",
  "core-video",
+ "cosmic-text",
  "futures",
  "gpui-kit",
  "gpui-pre-macos",
  "gpui-pre-platform",
+ "gpui-pre-wgpu",
  "gpui-pre-windows",
  "harfrust",
  "ibis-calc",
