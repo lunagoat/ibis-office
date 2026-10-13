@@ -78,6 +78,11 @@ cosmic-text = { version = "0.19.0", optional = true }
 # Printing (shell/print_linux.rs): the desktop's print dialog, through the XDG
 # desktop portal GPUI's Linux platform already talks to for its file dialogs.
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "print"] }
+# スペルチェック (spelling.rs): the Hunspell dictionaries installed, checked
+# and suggested from in Rust (MPL-2.0, used unmodified; no C library), and
+# the dictionaries not in UTF-8 read (the version ibis-pptx already uses).
+spellbook = "0.4.2"
+encoding_rs = "0.8"
 
 [features]
 default = ["export"]
