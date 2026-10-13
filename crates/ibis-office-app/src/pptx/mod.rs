@@ -34,7 +34,7 @@ pub(crate) mod gradient_panel;
 pub(crate) mod paragraph_panel;
 pub(crate) mod interaction;
 pub(crate) mod notes;
-#[cfg(all(target_os = "macos", feature = "scenarios"))]
+#[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "scenarios"))]
 pub(crate) mod scenarios;
 pub(crate) mod slide_view;
 pub(crate) mod size_panel;
@@ -405,7 +405,7 @@ impl FormatEditor for Presentation {
         editor.master_view_panel(cx).or_else(|| editor.notes_format_panel(cx)).or_else(|| editor.pptx_autorecover_settings_panel(cx)).or_else(|| editor.pptx_recover_unsaved_panel(cx)).or_else(|| editor.animation_options_panel(cx)).or_else(|| editor.pptx_compatibility_panel(cx)).or_else(|| editor.pptx_accessibility_panel(cx)).or_else(|| editor.presentation_inspect_panel(cx)).or_else(|| editor.presentation_properties_panel(cx)).or_else(|| editor.symbol_panel(cx)).or_else(|| editor.notes_marks_panel(cx)).or_else(|| editor.spelling_panel(cx)).or_else(|| editor.compress_panel(cx)).or_else(|| editor.print_panel(cx)).or_else(|| editor.layout_name_panel(cx)).or_else(|| editor.pptx_section_panel(cx)).or_else(|| editor.pptx_gradient_panel(cx)).or_else(|| editor.shadow_panel(cx)).or_else(|| editor.glow_panel(cx)).or_else(|| editor.pptx_paragraph_panel(cx)).or_else(|| editor.timing_panel(cx)).or_else(|| editor.show_panel(cx)).or_else(|| editor.crop_panel(cx)).or_else(|| editor.frame_panel(cx)).or_else(|| editor.cell_size_panel(cx)).or_else(|| editor.alt_text_panel(cx)).or_else(|| editor.chart_panel(cx)).or_else(|| editor.header_footer_panel(cx)).or_else(|| editor.animation_pane(cx)).or_else(|| editor.reading_order_pane(cx)).or_else(|| editor.selection_pane(cx)).or_else(|| editor.slide_link_panel(cx)).or_else(|| editor.theme_panel(cx)).or_else(|| editor.text_insets_panel(cx)).or_else(|| editor.slide_size_panel(cx)).or_else(|| editor.pptx_find_panel(cx)).or_else(|| editor.replace_fonts_panel(cx)).or_else(|| editor.slide_comments_panel(cx)).or_else(|| chrome::sidebar(editor))
     }
 
-    #[cfg(all(target_os = "macos", feature = "scenarios"))]
+    #[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "scenarios"))]
     fn scenarios() -> Vec<(&'static str, fn())> {
         scenarios::all()
     }

@@ -41,7 +41,7 @@ pub(crate) mod art_border;
 pub(crate) mod flow_layout;
 pub(crate) mod input;
 pub(crate) mod page_view;
-#[cfg(all(target_os = "macos", feature = "scenarios"))]
+#[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "scenarios"))]
 pub(crate) mod scenarios;
 pub(crate) mod toolbar;
 pub(crate) mod accessibility;
@@ -536,7 +536,7 @@ impl FormatEditor for Document {
         editor.doc_character_index_for_point(point, window, cx)
     }
 
-    #[cfg(all(target_os = "macos", feature = "scenarios"))]
+    #[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "scenarios"))]
     fn scenarios() -> Vec<(&'static str, fn())> {
         scenarios::all()
     }

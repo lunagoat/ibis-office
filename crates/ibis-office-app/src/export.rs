@@ -436,7 +436,7 @@ pub(crate) fn headless_app() -> (Rc<dyn Platform>, HeadlessAppContext) {
 /// The platform's renderer drawing without a window: GPUI's Metal one, on
 /// Windows the DirectX one of ibisOffice's fork, or on Linux the wgpu one of
 /// the Linux port's fork (GPUI has none on either).
-fn headless_renderer() -> Option<Box<dyn PlatformHeadlessRenderer>> {
+pub(crate) fn headless_renderer() -> Option<Box<dyn PlatformHeadlessRenderer>> {
     #[cfg(windows)]
     return gpui_windows::DirectXHeadlessRenderer::new()
         .map_err(|e| log::error!("DirectX: {e:#}"))

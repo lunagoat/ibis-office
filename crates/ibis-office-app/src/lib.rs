@@ -36,7 +36,7 @@ mod ui_snapshot;
 pub use shell::editor::SlideEditor;
 
 /// Run the scenario tests (`tests/scenarios.rs`; see `shell/scenario.rs`).
-#[cfg(all(target_os = "macos", feature = "scenarios"))]
+#[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "scenarios"))]
 pub fn run_scenarios(filter: &[String]) -> i32 {
     shell::scenario::run(filter)
 }

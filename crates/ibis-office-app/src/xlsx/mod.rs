@@ -52,7 +52,7 @@ pub(crate) mod header_footer_edit;
 pub(crate) mod find;
 pub(crate) mod links;
 pub(crate) mod headers;
-#[cfg(all(target_os = "macos", feature = "scenarios"))]
+#[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "scenarios"))]
 pub(crate) mod scenarios;
 pub(crate) mod sheet_ui;
 mod right_tabs;
@@ -345,7 +345,7 @@ impl FormatEditor for Workbook {
         toolbar::menus(editor, menus);
     }
 
-    #[cfg(all(target_os = "macos", feature = "scenarios"))]
+    #[cfg(all(any(target_os = "macos", target_os = "linux"), feature = "scenarios"))]
     fn scenarios() -> Vec<(&'static str, fn())> {
         scenarios::all()
     }

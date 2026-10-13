@@ -82,6 +82,20 @@ pub(crate) fn all() -> Vec<(&'static str, fn())> {
 /// (`!pptx::gradient`), printing each result as libtest does. The exit
 /// status: 0 when all pass.
 pub fn run(filter: &[String]) -> i32 {
+    // Linux's settings, recent files and recovery files belong to this run,
+    // not to the user who runs the scenarios.
+    #[cfg(target_os = "linux")]
+    {
+        let profile = repo_root().join("target/scenario/linux-profile");
+        if profile.exists() {
+            std::fs::remove_dir_all(&profile).expect("the previous scenario profile");
+        }
+        // SAFETY: the driver runs on the main thread, before creating apps.
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", profile.join("config"));
+            std::env::set_var("XDG_DATA_HOME", profile.join("data"));
+        }
+    }
     let (skip, take): (Vec<&String>, Vec<&String>) = filter.iter().partition(|f| f.starts_with('!'));
     let chosen: Vec<_> = all()
         .into_iter()
@@ -90,6 +104,8 @@ pub fn run(filter: &[String]) -> i32 {
         .collect();
     println!("\nrunning {} scenarios", chosen.len());
     let mut failed = Vec::new();
+    #[cfg(target_os = "linux")]
+    let mut skipped = 0;
     // The test files must come out as they went in (a scenario works on
     // copies of them, `Scenario::open`). One scenario's after is the next
     // one's before (listing them takes 0.1 s, twice per scenario was a
@@ -98,13 +114,34 @@ pub fn run(filter: &[String]) -> i32 {
     for (name, f) in &chosen {
         CURRENT.with(|c| *c.borrow_mut() = name.to_string());
         let started = crate::clock::Instant::now();
-        let result = std::panic::catch_unwind(f);
+        let result = std::panic::catch_unwind(|| {
+            #[cfg(target_os = "linux")]
+            {
+                if let Some(path) = linux_fixture(name) {
+                    require_fixture(&repo_root().join(path));
+                }
+                if let Some((variable, reason)) = linux_external_fixture(name) {
+                    if std::env::var_os(variable).is_none() {
+                        std::panic::resume_unwind(Box::new(LinuxSkip(format!("{reason} ({variable} is not set)"))));
+                    }
+                }
+            }
+            f();
+        });
         let took = started.elapsed();
         let after = test_files();
         let changed = changed_files(&before, &after);
         before = after;
         for path in &changed {
             println!("scenario {name}: changed a test file: {path}");
+        }
+        #[cfg(target_os = "linux")]
+        if changed.is_empty() {
+            if let Some(reason) = result.as_ref().err().and_then(|e| e.downcast_ref::<LinuxSkip>()) {
+                println!("scenario {name} ... skipped on Linux: {}", reason.0);
+                skipped += 1;
+                continue;
+            }
         }
         let ok = result.is_ok() && changed.is_empty();
         // The time it took (scripts/check-main.py lists the slowest).
@@ -133,11 +170,130 @@ pub fn run(filter: &[String]) -> i32 {
     if let Some(path) = std::env::var_os("IBIS_I18N_LOG") {
         let _ = std::fs::write(path, crate::shell::i18n::log::lines().join("\n") + "\n");
     }
+    #[cfg(target_os = "linux")]
+    println!("\nscenario result: {}. {} passed; {} failed; {} skipped", if failed.is_empty() { "ok" } else { "FAILED" }, chosen.len() - failed.len() - skipped, failed.len(), skipped);
+    #[cfg(not(target_os = "linux"))]
     println!("\nscenario result: {}. {} passed; {} failed", if failed.is_empty() { "ok" } else { "FAILED" }, chosen.len() - failed.len(), failed.len());
     for name in &failed {
         println!("    {name}");
     }
     if failed.is_empty() { 0 } else { 1 }
+}
+
+/// A Linux-only skip, caught by the runner without hiding assertion failures.
+#[cfg(target_os = "linux")]
+struct LinuxSkip(String);
+
+/// Editing fixtures are absent from the public repository. Skip only an
+/// absent file there; permission errors and missing generated files still fail.
+#[cfg(target_os = "linux")]
+pub(crate) fn require_fixture(path: &Path) {
+    if path.starts_with(repo_root().join("test/editing")) {
+        if let Err(error) = std::fs::metadata(path) {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                let relative = path.strip_prefix(repo_root()).unwrap_or(path);
+                std::panic::resume_unwind(Box::new(LinuxSkip(format!("{} is not in the public repository", relative.display()))));
+            }
+        }
+    }
+}
+
+/// These scenarios read a private fixture before opening their window.
+/// Check it here too, so that its absence is reported as a skip on Linux.
+#[cfg(target_os = "linux")]
+fn linux_fixture(name: &str) -> Option<&'static str> {
+    match name {
+        "pptx::pptm_and_macro_enabled_presentations"
+        | "pptx::video_border_shape_and_effects_options"
+        | "pptx::media_bookmarks_playback_options"
+        | "pptx::play_animations_in_the_show"
+        | "pptx::protected_file"
+        | "pptx::animation_triggers_and_interactive_sequences"
+        | "pptx::content_placeholder_insert_table_picture_clip"
+        | "pptx::media_playback_options_and_slideshow"
+        | "pptx::media_trim_and_fade_playback_options"
+        | "pptx::media_captions_and_accessibility"
+        | "pptx::spelling_check" => Some("test/editing/pptx-plan.pptx"),
+        "xlsx::sec002_protect_sheet"
+        | "xlsx::sec004_allow_edit_ranges"
+        | "xlsx::sec005_protect_workbook"
+        | "xlsx::cell003_long_numbers_precision"
+        | "xlsx::chtype022_radar_chart_styles_and_rendering"
+        | "xlsx::chtype011_of_pie_chart_styles_and_rendering"
+        | "xlsx::chtype018_stock_chart_hlc_and_ohlc"
+        | "xlsx::chtype020_stock_chart_volume_vhlc_and_vohlc"
+        | "xlsx::chtype021_surface_and_contour_charts"
+        | "xlsx::chart011_secondary_and_series_axis"
+        | "xlsx::spelling_check" => Some("test/editing/xlsx-sales.xlsx"),
+        "xlsx::sec006_open_password" => Some("test/editing/xlsx-encrypted.xlsx"),
+        "xlsx::image002_cell_pictures" => Some("test/editing/xlsx-cell-images-excel.xlsx"),
+        "docx::h9_original_insertion_format"
+        | "docx::h9_insertion_unknown_run_save_guard"
+        | "docx::h9_original_insertion_page"
+        | "docx::h9_insertion_field_edit"
+        | "docx::a9_table_paragraph_details"
+        | "docx::a9_table_alignment_and_spacing"
+        | "docx::h9_table_font_rejection"
+        | "docx::h9_table_format_rejection"
+        | "docx::a6_native_table_selection"
+        | "docx::a11_tracked_table_rejection"
+        | "docx::a6_character_spacing_and_scale"
+        | "docx::a6_font_table_selection"
+        | "docx::b7_whole_words_history"
+        | "docx::h9_record_setting_only"
+        | "docx::h9_note_original_history"
+        | "docx::h9_note_id_namespace_typing"
+        | "docx::h9_note_selected_history"
+        | "docx::b7_hidden_history_edges"
+        | "docx::h9_history_adjacent_field"
+        | "docx::h9_original_history_typed_replacement"
+        | "docx::h9_original_history_linked_typing"
+        | "docx::h9_original_history_split"
+        | "docx::h9_cross_paragraph_history_guard"
+        | "docx::h9_linked_source_insertion_format"
+        | "docx::h9_history_namespace_typing"
+        | "docx::h9_linked_source_hidden_delete"
+        | "docx::h9_distinct_source_link_frames"
+        | "docx::h9_insertion_replacement_save_guard"
+        | "docx::h9_insertion_partial_delete_save_guard"
+        | "docx::a9_nested_table_decorations"
+        | "docx::h6_page_count_fields"
+        | "docx::h6_columns"
+        | "docx::c4_table_style_options"
+        | "docx::f1_macro_file"
+        | "docx::c3_cell_vertical_alignment"
+        | "docx::c4_complex_merge_rejected"
+        | "docx::c4_wrapped_split_preserved"
+        | "docx::h12_editing_around_complex_elements"
+        | "docx::d3_story_reference_settings_preservation"
+        | "docx::list002_picture_bullet"
+        | "docx::toc015_outline_level_and_move"
+        | "docx::toc014_collapse_headings"
+        | "docx::h11_paste_original_history"
+        | "docx::h11_tracked_paste_original_history"
+        | "docx::h9_linked_source_insertion_typing"
+        | "docx::h9_link_relationship_namespace_typing"
+        | "docx::h9_history_namespace_replacement"
+        | "docx::h9_source_insertion_partial_delete"
+        | "docx::h9_source_insertion_replacement"
+        | "docx::h9_linked_insertion_replacement"
+        | "docx::h9_linked_insertion_partial_delete"
+        | "docx::d3_story_relationship_namespace"
+        | "docx::d3_all_story_relationship_namespaces" => Some("test/editing/docx-report.docx"),
+        "docx::h11_picture_relationship_namespace" => Some("test/editing/docx-paste-destination.docx"),
+        "docx::sec001_open_password" => Some("test/editing/docx-chapter-pages-encrypted.docx"),
+        _ => None,
+    }
+}
+
+/// These SmartArt scenarios need Office layout definitions that are not
+/// in the public repository. Count and print their existing skip on Linux.
+#[cfg(target_os = "linux")]
+fn linux_external_fixture(name: &str) -> Option<(&'static str, &'static str)> {
+    match name {
+        "pptx::smartart_shown_and_moved" | "pptx::smartart_to_shapes" => Some(("IBIS_PSMT", "the Office-made SmartArt fixture is not in the public repository")),
+        _ => None,
+    }
 }
 
 thread_local! {
@@ -223,6 +379,9 @@ pub(crate) struct Scenario {
     editor: Entity<SlideEditor>,
     window: WindowHandle<Root>,
     cx: HeadlessAppContext,
+    // Linux keeps its platform alive for the text system used by the app.
+    #[cfg(target_os = "linux")]
+    _platform: std::rc::Rc<dyn Platform>,
     name: String,
     shots: usize,
     _lock: MutexGuard<'static, ()>,
@@ -241,6 +400,8 @@ impl Scenario {
     /// `open` in a window `width` points wide.
     pub(crate) fn open_sized(path: &str, width: f32) -> Self {
         let original = repo_root().join(path);
+        #[cfg(target_os = "linux")]
+        require_fixture(&original);
         let mut s = Self::start_sized(width);
         let full = s.dir().join(original.file_name().expect("a file name"));
         std::fs::copy(&original, &full).unwrap_or_else(|e| panic!("{path}: {e}"));
@@ -295,8 +456,17 @@ impl Scenario {
         crate::shell::i18n::show(crate::shell::i18n::Language::Japanese);
         let name = CURRENT.with(|c| c.borrow().clone());
         let name = if name.is_empty() { "scenario".to_string() } else { name };
+        #[cfg(target_os = "linux")]
+        let platform = gpui_kit::platform::current_platform(true);
+        #[cfg(target_os = "linux")]
+        let text_system: Arc<dyn gpui_kit::PlatformTextSystem> = Arc::new(drawn_text::Logging { inner: platform.text_system() });
+        #[cfg(target_os = "macos")]
         let text_system: Arc<dyn gpui_kit::PlatformTextSystem> = Arc::new(drawn_text::Logging { inner: gpui_kit::platform::current_platform(true).text_system() });
-        let mut cx = HeadlessAppContext::with_platform(text_system, Arc::new(crate::shell::icons::Assets::new("")), gpui_kit::platform::current_headless_renderer);
+        #[cfg(target_os = "linux")]
+        let renderer = crate::export::headless_renderer;
+        #[cfg(target_os = "macos")]
+        let renderer = gpui_kit::platform::current_headless_renderer;
+        let mut cx = HeadlessAppContext::with_platform(text_system, Arc::new(crate::shell::icons::Assets::new("")), renderer);
         cx.allow_parking();
         cx.update(crate::init);
         let slot: std::rc::Rc<std::cell::RefCell<Option<Entity<SlideEditor>>>> = Default::default();
@@ -311,7 +481,12 @@ impl Scenario {
             })
             .expect("a headless window");
         let editor = slot.borrow().clone().expect("the editor");
-        Self { editor, window, cx, name, shots: 0, _lock: lock }
+        Self {
+            editor, window, cx,
+            #[cfg(target_os = "linux")]
+            _platform: platform,
+            name, shots: 0, _lock: lock,
+        }
     }
 
     /// Let everything run and draw the window (a few frames, pictures decoded).
@@ -510,6 +685,17 @@ impl Scenario {
     /// A key, as GPUI writes it: `"cmd-b"`, `"enter"`, `"shift-tab"`.
     pub(crate) fn key(&mut self, keystroke: &str) {
         let keystroke = Keystroke::parse(keystroke).unwrap_or_else(|e| panic!("{keystroke}: {e:?}"));
+        // Scenarios use Command for the app's shortcuts; Linux binds them
+        // to Control, as a user's keyboard does there.
+        #[cfg(target_os = "linux")]
+        let keystroke = {
+            let mut keystroke = keystroke;
+            if keystroke.modifiers.platform {
+                keystroke.modifiers.platform = false;
+                keystroke.modifiers.control = true;
+            }
+            keystroke
+        };
         self.cx.update_window(self.window.into(), |_, window, app| window.dispatch_keystroke(keystroke, app)).ok();
         self.settle();
     }

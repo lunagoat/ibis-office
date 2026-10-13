@@ -4,6 +4,24 @@
 //! The workbook's work scenarios (`tasks/doc/scenarios-xlsx.md`), driven
 //! through the window (`shell/scenario.rs`).
 
+// The public repository has no editing TSVs. Linux reads them at run time,
+// so their absence does not prevent the rest of the scenarios from building.
+macro_rules! scenario_cases {
+    ($path:literal) => {{
+        #[cfg(not(target_os = "linux"))]
+        { include_str!($path) }
+        #[cfg(target_os = "linux")]
+        {
+            static TEXT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+            TEXT.get_or_init(|| {
+                let path = crate::shell::scenario::repo_root().join($path.trim_start_matches("../../../../"));
+                crate::shell::scenario::require_fixture(&path);
+                std::fs::read_to_string(path).expect($path)
+            }).as_str()
+        }
+    }};
+}
+
 use ibis_doc_model::{CellRange, CellValue, sheet_calc::sheet_of_slide, sheet_command::Axis};
 
 use gpui_kit::{Bounds, point, px, size};
@@ -7546,13 +7564,13 @@ fn xsc55_spill_partial_delete() {
 }
 
 fn xsc08_match_options() {
-    let mut s=new_sheet();let cases:Vec<_>=include_str!("../../../../test/editing/xlsx-match-options.tsv").lines().skip(1).map(|line|line.split_once('\t').unwrap()).collect();
+    let mut s=new_sheet();let cases:Vec<_>=scenario_cases!("../../../../test/editing/xlsx-match-options.tsv").lines().skip(1).map(|line|line.split_once('\t').unwrap()).collect();
     for (row,(formula,expected)) in cases.iter().enumerate(){let address=format!("A{}",row+1);let expected=expected.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(if *expected=="#N/A"{ibis_doc_model::CellError::NA}else{ibis_doc_model::CellError::Value}));s.click_cell(&address);s.enter(&format!("={formula}"),"enter");assert_eq!(s.value(&address),expected,"{formula}");s.key("cmd-z");assert_eq!(s.value(&address),CellValue::Empty);s.key("cmd-shift-z");assert_eq!(s.value(&address),expected);}
     s.save_as("xsc08-match-options.xlsx");let p=s.reopen();let sh=sheet_of_slide(&p.slides[1]).unwrap();for(row,(formula,expected))in cases.iter().enumerate(){let expected=expected.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(if *expected=="#N/A"{ibis_doc_model::CellError::NA}else{ibis_doc_model::CellError::Value}));let cell=sh.cell(row as u32,0).unwrap();assert_eq!(cell.value,expected);assert_eq!(cell.formula.as_deref(),Some(*formula));}
 }
 
 fn xsc55_unique_options() {
-    for(case,line)in include_str!("../../../../test/editing/xlsx-unique-options.tsv").lines().skip(1).enumerate(){let fields:Vec<_>=line.split('\t').collect();let mut s=new_sheet();for(row,values)in [[1,10,1],[2,20,2],[1,10,1]].into_iter().enumerate(){for(column,n)in values.into_iter().enumerate(){s.click_cell(&ibis_doc_model::cell_name(column as u32,row as u32));s.enter(&n.to_string(),"enter");}}s.click_cell("E1");s.enter(&format!("={}",fields[0]),"enter");
+    for(case,line)in scenario_cases!("../../../../test/editing/xlsx-unique-options.tsv").lines().skip(1).enumerate(){let fields:Vec<_>=line.split('\t').collect();let mut s=new_sheet();for(row,values)in [[1,10,1],[2,20,2],[1,10,1]].into_iter().enumerate(){for(column,n)in values.into_iter().enumerate(){s.click_cell(&ibis_doc_model::cell_name(column as u32,row as u32));s.enter(&n.to_string(),"enter");}}s.click_cell("E1");s.enter(&format!("={}",fields[0]),"enter");
         let check=|s:&mut Scenario,text:&str|{let rows:Vec<Vec<f64>>=text.split(';').map(|r|r.split(',').map(|v|v.parse().unwrap()).collect()).collect();for row in 0..3{for col in 0..3{assert_eq!(s.value(&ibis_doc_model::cell_name(col+4,row)),rows.get(row as usize).and_then(|x|x.get(col as usize)).map_or(CellValue::Empty,|n|CellValue::Number(*n)));}}};
         check(&mut s,fields[1]);s.save_as(&format!("xsc55-unique-{case}-before.xlsx"));let p=s.reopen();let sh=sheet_of_slide(&p.slides[1]).unwrap();let rows:Vec<_>=fields[1].split(';').collect();assert_eq!(sh.spills.get(&(0,4)),Some(&ibis_doc_model::CellRange {first_row:0,last_row:rows.len()as u32-1,first_column:4,last_column:4+rows[0].split(',').count()as u32-1}));for(row,values)in rows.iter().enumerate(){for(col,n)in values.split(',').enumerate(){assert_eq!(sh.cell(row as u32,col as u32+4).unwrap().value,CellValue::Number(n.parse().unwrap()));}}assert_eq!(sh.cell(0,4).unwrap().formula.as_deref(),Some(fields[0]));s.click_cell("C3");s.enter("3","enter");check(&mut s,fields[2]);s.key("cmd-z");check(&mut s,fields[1]);s.key("cmd-shift-z");check(&mut s,fields[2]);s.save_as(&format!("xsc55-unique-{case}-after.xlsx"));let p=s.reopen();let sh=sheet_of_slide(&p.slides[1]).unwrap();assert_eq!(sh.spills.get(&(0,4)),Some(&ibis_doc_model::CellRange {first_row:0,last_row:2,first_column:4,last_column:6}));for(row,values)in [[1.,10.,1.],[2.,20.,2.],[1.,10.,3.]].into_iter().enumerate(){for(col,n)in values.into_iter().enumerate(){assert_eq!(sh.cell(row as u32,col as u32+4).unwrap().value,CellValue::Number(n));}}
     }
@@ -7568,15 +7586,15 @@ fn xsc55_lambda_bindings() {
 }
 
 fn xsc55_map_shapes() {
-    let mut s=new_sheet();s.click_cell("J10");s.enter("5","enter");let cases:Vec<_>=include_str!("../../../../test/editing/xlsx-map-shapes.tsv").lines().skip(1).map(|line|line.split_once('\t').unwrap()).collect();for(i,(formula,expected))in cases.iter().enumerate(){let address=format!("A{}",i*3+1);let check=|s:&mut Scenario|{for(row,values)in expected.split(';').enumerate(){for(col,v)in values.split(',').enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==v).unwrap()));assert_eq!(s.value(&ibis_doc_model::cell_name(col as u32,i as u32*3+row as u32)),expected);}}};s.click_cell(&address);s.enter(&format!("={formula}"),"enter");check(&mut s);s.key("cmd-z");assert_eq!(s.value(&address),CellValue::Empty);s.key("cmd-shift-z");check(&mut s);}s.save_as("xsc55-map-shapes.xlsx");let p=s.reopen();let sh=sheet_of_slide(&p.slides[1]).unwrap();for(i,(formula,expected))in cases.iter().enumerate(){assert_eq!(sh.cell(i as u32*3,0).unwrap().formula.as_deref(),Some(*formula));for(row,values)in expected.split(';').enumerate(){for(col,v)in values.split(',').enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==v).unwrap()));assert_eq!(sh.cell(i as u32*3+row as u32,col as u32).unwrap().value,expected);}}}
+    let mut s=new_sheet();s.click_cell("J10");s.enter("5","enter");let cases:Vec<_>=scenario_cases!("../../../../test/editing/xlsx-map-shapes.tsv").lines().skip(1).map(|line|line.split_once('\t').unwrap()).collect();for(i,(formula,expected))in cases.iter().enumerate(){let address=format!("A{}",i*3+1);let check=|s:&mut Scenario|{for(row,values)in expected.split(';').enumerate(){for(col,v)in values.split(',').enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==v).unwrap()));assert_eq!(s.value(&ibis_doc_model::cell_name(col as u32,i as u32*3+row as u32)),expected);}}};s.click_cell(&address);s.enter(&format!("={formula}"),"enter");check(&mut s);s.key("cmd-z");assert_eq!(s.value(&address),CellValue::Empty);s.key("cmd-shift-z");check(&mut s);}s.save_as("xsc55-map-shapes.xlsx");let p=s.reopen();let sh=sheet_of_slide(&p.slides[1]).unwrap();for(i,(formula,expected))in cases.iter().enumerate(){assert_eq!(sh.cell(i as u32*3,0).unwrap().formula.as_deref(),Some(*formula));for(row,values)in expected.split(';').enumerate(){for(col,v)in values.split(',').enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==v).unwrap()));assert_eq!(sh.cell(i as u32*3+row as u32,col as u32).unwrap().value,expected);}}}
 }
 
 fn xsc55_lambda_arity() {
-    let mut s=new_sheet();let cases:Vec<_>=include_str!("../../../../test/editing/xlsx-lambda-arity.tsv").lines().skip(1).map(|line|line.split_once('\t').unwrap()).collect();for(row,(formula,v))in cases.iter().enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==*v).unwrap()));let address=format!("A{}",row+1);s.click_cell(&address);s.enter(&format!("={formula}"),"enter");assert_eq!(s.value(&address),expected,"{formula}");s.key("cmd-z");assert_eq!(s.value(&address),CellValue::Empty);s.key("cmd-shift-z");assert_eq!(s.value(&address),expected);}s.save_as("xsc55-lambda-arity.xlsx");let p=s.reopen();let sh=sheet_of_slide(&p.slides[1]).unwrap();for(row,(formula,v))in cases.iter().enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==*v).unwrap()));let cell=sh.cell(row as u32,0).unwrap();assert_eq!(cell.value,expected);assert_eq!(cell.formula.as_deref(),Some(*formula));}
+    let mut s=new_sheet();let cases:Vec<_>=scenario_cases!("../../../../test/editing/xlsx-lambda-arity.tsv").lines().skip(1).map(|line|line.split_once('\t').unwrap()).collect();for(row,(formula,v))in cases.iter().enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==*v).unwrap()));let address=format!("A{}",row+1);s.click_cell(&address);s.enter(&format!("={formula}"),"enter");assert_eq!(s.value(&address),expected,"{formula}");s.key("cmd-z");assert_eq!(s.value(&address),CellValue::Empty);s.key("cmd-shift-z");assert_eq!(s.value(&address),expected);}s.save_as("xsc55-lambda-arity.xlsx");let p=s.reopen();let sh=sheet_of_slide(&p.slides[1]).unwrap();for(row,(formula,v))in cases.iter().enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==*v).unwrap()));let cell=sh.cell(row as u32,0).unwrap();assert_eq!(cell.value,expected);assert_eq!(cell.formula.as_deref(),Some(*formula));}
 }
 
 fn xsc55_isomitted() {
-    let cases: Vec<_> = include_str!("../../../../test/editing/xlsx-isomitted.tsv")
+    let cases: Vec<_> = scenario_cases!("../../../../test/editing/xlsx-isomitted.tsv")
         .lines().skip(1).map(|line| line.split_once('\t').unwrap()).collect();
     for (group, cases) in cases.chunks(6).enumerate() {
         let mut s = new_sheet();
@@ -7621,7 +7639,7 @@ fn xsc01_scrollbar_edge_selection() {
     let mut s = new_sheet();
     s.click_cell("A2");
     s.enter("7", "enter");
-    for (i, line) in include_str!("../../../../test/editing/xlsx-isomitted.tsv").lines().skip(1).enumerate() {
+    for (i, line) in scenario_cases!("../../../../test/editing/xlsx-isomitted.tsv").lines().skip(1).enumerate() {
         let (formula, _) = line.split_once('\t').unwrap();
         let address = format!("D{}", i * 3 + 1);
         s.click_cell(&address);
@@ -7643,7 +7661,7 @@ fn xsc01_scrollbar_edge_selection() {
     s.save_as("xsc01-scrollbar-edge.xlsx");
     let p=s.reopen();
     let sh=sheet_of_slide(&p.slides[1]).unwrap();
-    for(i,line)in include_str!("../../../../test/editing/xlsx-isomitted.tsv").lines().skip(1).enumerate(){let(formula,_)=line.split_once('\t').unwrap();assert_eq!(sh.cell(i as u32*3,3).unwrap().formula.as_deref(),Some(formula));}
+    for(i,line)in scenario_cases!("../../../../test/editing/xlsx-isomitted.tsv").lines().skip(1).enumerate(){let(formula,_)=line.split_once('\t').unwrap();assert_eq!(sh.cell(i as u32*3,3).unwrap().formula.as_deref(),Some(formula));}
 }
 
 fn xsc55_spill_cross_sheet() {
@@ -7667,14 +7685,14 @@ fn xsc55_spill_cross_sheet() {
 }
 
 fn xsc55_dynamic_reference() {
-    let mut s=new_sheet();s.click_cell("A1");s.enter("3","enter");s.click_cell("B2");s.enter("=SEQUENCE(A1)","enter");let cases:Vec<_>=include_str!("../../../../test/editing/xlsx-dynamic-reference.tsv").lines().skip(1).map(|line|line.split('\t').collect::<Vec<_>>()).collect();
+    let mut s=new_sheet();s.click_cell("A1");s.enter("3","enter");s.click_cell("B2");s.enter("=SEQUENCE(A1)","enter");let cases:Vec<_>=scenario_cases!("../../../../test/editing/xlsx-dynamic-reference.tsv").lines().skip(1).map(|line|line.split('\t').collect::<Vec<_>>()).collect();
     let check=|s:&mut Scenario,col:usize|{for(i,f)in cases.iter().enumerate(){let expected:Vec<f64>=f[col].split(';').map(|v|v.parse().unwrap()).collect();for r in 0..3{assert_eq!(s.value(&ibis_doc_model::cell_name(3+i as u32*3,r+2)),expected.get(r as usize).map_or(CellValue::Empty,|n|CellValue::Number(*n)),"{} {r}",f[0]);}}};
     for(i,f)in cases.iter().enumerate(){let address=ibis_doc_model::cell_name(3+i as u32*3,2);s.click_cell(&address);assert_eq!(s.selected(),address);s.enter(&format!("={}",f[0]),"enter");}check(&mut s,1);s.save_as("xsc55-dynamic-reference-before.xlsx");s.click_cell("A1");s.enter("2","enter");check(&mut s,2);s.key("cmd-z");check(&mut s,1);s.key("cmd-shift-z");check(&mut s,2);s.save_as("xsc55-dynamic-reference-after.xlsx");let p=s.reopen();let sh=sheet_of_slide(&p.slides[1]).unwrap();for(i,f)in cases.iter().enumerate(){assert_eq!(sh.cell(2,3+i as u32*3).unwrap().formula.as_deref(),Some(f[0]));let expected:Vec<f64>=f[2].split(';').map(|v|v.parse().unwrap()).collect();for r in 0..3{assert_eq!(sh.cell(r+2,3+i as u32*3).map(|x|x.value.clone()).unwrap_or_default(),expected.get(r as usize).map_or(CellValue::Empty,|n|CellValue::Number(*n)));}}
 }
 
 
 fn xsc55_text_boundary() {
-    let mut s=new_sheet();let cases:Vec<_>=include_str!("../../../../test/editing/xlsx-text-boundary.tsv").lines().skip(1).map(|line|line.split_once('\t').unwrap()).collect();for(row,(formula,v))in cases.iter().enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==*v).unwrap()));let address=format!("A{}",row+1);s.click_cell(&address);s.enter(&format!("={formula}"),"enter");assert_eq!(s.value(&address),expected,"{formula}");s.key("cmd-z");assert_eq!(s.value(&address),CellValue::Empty);s.key("cmd-shift-z");assert_eq!(s.value(&address),expected);}s.save_as("xsc55-text-boundary.xlsx");let p=s.reopen();let sh=sheet_of_slide(&p.slides[1]).unwrap();for(row,(formula,v))in cases.iter().enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==*v).unwrap()));let cell=sh.cell(row as u32,0).unwrap();assert_eq!(cell.value,expected);assert_eq!(cell.formula.as_deref(),Some(*formula));}
+    let mut s=new_sheet();let cases:Vec<_>=scenario_cases!("../../../../test/editing/xlsx-text-boundary.tsv").lines().skip(1).map(|line|line.split_once('\t').unwrap()).collect();for(row,(formula,v))in cases.iter().enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==*v).unwrap()));let address=format!("A{}",row+1);s.click_cell(&address);s.enter(&format!("={formula}"),"enter");assert_eq!(s.value(&address),expected,"{formula}");s.key("cmd-z");assert_eq!(s.value(&address),CellValue::Empty);s.key("cmd-shift-z");assert_eq!(s.value(&address),expected);}s.save_as("xsc55-text-boundary.xlsx");let p=s.reopen();let sh=sheet_of_slide(&p.slides[1]).unwrap();for(row,(formula,v))in cases.iter().enumerate(){let expected=v.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==*v).unwrap()));let cell=sh.cell(row as u32,0).unwrap();assert_eq!(cell.value,expected);assert_eq!(cell.formula.as_deref(),Some(*formula));}
 }
 
 fn xsc55_compatibility_len() {
@@ -7709,7 +7727,7 @@ fn xsc55_compatibility_len() {
 fn xsc55_compatibility_slice() {
     for(path,version)in[("test/editing/xlsx-compatibility-v1.xlsx",1),("test/editing/xlsx-sales.xlsx",2)] {
         let mut s=Scenario::open(path);s.menu("xlsx.insert-sheet");
-        let cases:Vec<_>=include_str!("../../../../test/editing/xlsx-compatibility-slice.tsv").lines().skip(1).map(|line|line.split('\t').collect::<Vec<_>>()).collect();
+        let cases:Vec<_>=scenario_cases!("../../../../test/editing/xlsx-compatibility-slice.tsv").lines().skip(1).map(|line|line.split('\t').collect::<Vec<_>>()).collect();
         for(row,f)in cases.iter().enumerate() {
             let text=f[version as usize];let expected=ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==text).map_or_else(||CellValue::Text(text.into()),|e|CellValue::Error(*e));
             let address=format!("A{}",row+1);s.click_cell(&address);s.enter(&format!("={}",f[0]),"enter");
@@ -7729,7 +7747,7 @@ fn xsc55_compatibility_slice() {
 fn xsc55_compatibility_search() {
     for(path,version)in[("test/editing/xlsx-compatibility-v1.xlsx",1),("test/editing/xlsx-sales.xlsx",2)] {
         let mut s=Scenario::open(path);s.menu("xlsx.insert-sheet");
-        let cases:Vec<_>=include_str!("../../../../test/editing/xlsx-compatibility-search.tsv").lines().skip(1).map(|line|line.split('\t').collect::<Vec<_>>()).collect();
+        let cases:Vec<_>=scenario_cases!("../../../../test/editing/xlsx-compatibility-search.tsv").lines().skip(1).map(|line|line.split('\t').collect::<Vec<_>>()).collect();
         for(row,f)in cases.iter().enumerate() {
             let text=f[version as usize];let expected=text.parse::<f64>().map(CellValue::Number).unwrap_or_else(|_|CellValue::Error(*ibis_doc_model::CellError::ALL.iter().find(|e|e.as_str()==text).unwrap()));
             let address=format!("A{}",row+1);s.click_cell(&address);s.enter(&format!("={}",f[0]),"enter");
@@ -7747,7 +7765,7 @@ fn xsc55_compatibility_search() {
 }
 
 fn xsc55_compatibility_toggle() {
-    let mut s=new_sheet();let cases:Vec<_>=include_str!("../../../../test/editing/xlsx-compatibility-toggle.tsv").lines().skip(1).map(|line|line.split('\t').collect::<Vec<_>>()).collect();
+    let mut s=new_sheet();let cases:Vec<_>=scenario_cases!("../../../../test/editing/xlsx-compatibility-toggle.tsv").lines().skip(1).map(|line|line.split('\t').collect::<Vec<_>>()).collect();
     for(i,f)in cases.iter().enumerate(){s.click_cell(&format!("A{}",i*3+1));s.enter(&format!("={}",f[0]),"enter");}
     let check=|s:&mut Scenario,version:u32| {
         assert_eq!(s.menu_state("xlsx.compatibility-v1"),Some((version!=1,version==1)));
@@ -7766,7 +7784,7 @@ fn xsc55_compatibility_toggle() {
 
 
 fn xsc55_dynamic_reopen() {
-    let cases: Vec<_> = include_str!("../../../../test/editing/xlsx-dynamic-reopen.tsv").lines().skip(1).map(|line| line.split('\t').collect::<Vec<_>>()).collect();
+    let cases: Vec<_> = scenario_cases!("../../../../test/editing/xlsx-dynamic-reopen.tsv").lines().skip(1).map(|line| line.split('\t').collect::<Vec<_>>()).collect();
     let check = |s: &mut Scenario, col: usize| {
         for (i, f) in cases.iter().enumerate() {
             let expected: Vec<f64> = f[col].split(';').map(|v| v.parse().unwrap()).collect();
@@ -7800,7 +7818,7 @@ fn xsc55_dynamic_reopen() {
 
 
 fn xsc39_week_return_types() {
-    let mut s = new_sheet(); let cases: Vec<_> = include_str!("../../../../test/editing/xlsx-week-return-types.tsv").lines().skip(1).map(|line| line.split('\t').collect::<Vec<_>>()).collect();
+    let mut s = new_sheet(); let cases: Vec<_> = scenario_cases!("../../../../test/editing/xlsx-week-return-types.tsv").lines().skip(1).map(|line| line.split('\t').collect::<Vec<_>>()).collect();
     s.click_cell("B1"); s.enter("=DATE(2021,1,1)", "enter");
     for (r, f) in cases.iter().enumerate() { s.click_cell(&format!("A{}", r + 1)); s.enter(&format!("={}", f[0]), "enter"); }
     let check = |s: &mut Scenario, col: usize| { for (r, f) in cases.iter().enumerate() { let expected = f[col].parse::<f64>().map(CellValue::Number).unwrap_or(CellValue::Error(ibis_doc_model::CellError::Num)); assert_eq!(s.value(&format!("A{}", r + 1)), expected, "{}", f[0]); } };
@@ -7814,7 +7832,7 @@ fn xsc39_week_return_types() {
 
 
 fn xsc39_day_count_options() {
-    let mut s = new_sheet(); let cases: Vec<_> = include_str!("../../../../test/editing/xlsx-day-count-options.tsv").lines().skip(1).map(|line| line.split('\t').collect::<Vec<_>>()).collect();
+    let mut s = new_sheet(); let cases: Vec<_> = scenario_cases!("../../../../test/editing/xlsx-day-count-options.tsv").lines().skip(1).map(|line| line.split('\t').collect::<Vec<_>>()).collect();
     s.click_cell("B1"); s.enter("=DATE(2019,1,1)", "enter"); s.click_cell("C1"); s.enter("=DATE(2020,1,1)", "enter");
     for (r, f) in cases.iter().enumerate() { s.click_cell(&format!("A{}", r + 1)); s.enter(&format!("={}", f[0]), "enter"); }
     let check = |s: &mut Scenario, col: usize| { for (r, f) in cases.iter().enumerate() { let expected = f[col].parse::<f64>().map(CellValue::Number).unwrap_or(CellValue::Error(ibis_doc_model::CellError::Num)); assert_eq!(s.value(&format!("A{}", r + 1)), expected, "{}", f[0]); } };
