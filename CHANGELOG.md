@@ -5,6 +5,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- A desktop app for Linux, packaged by `scripts/bundle-linux.sh` as `ibisOffice-<version>-Linux-<arch>.tar.gz` (built and tried on x86_64 only).
+  - Vulkan rendering through GPUI's wgpu backend.
+  - `install.sh` installs for the current user or, with `--prefix`, system-wide; `uninstall.sh` removes it.
+  - Spell checking with the Hunspell dictionaries installed on the system (no C library linked; `$DICPATH` and the XDG data directories are searched). A personal word list is kept beside the settings.
+  - Video and audio playback through GStreamer (`playbin`), built with the `media` feature (on by default). Building with `--no-default-features --features export` omits GStreamer; clips then play nothing.
+  - Command-line export (`--export png|pdf|pdf-image|ui`) without a display server, using a headless wgpu renderer.
+  - Printing through the desktop's print dialog (XDG desktop portal); falls back to the system's PDF viewer.
+  - Carlito (metric-compatible with Calibri) bundled in the executable. Liberation Sans/Serif/Mono, Caladea and the IPA fonts stand in for Arial, Times New Roman, Courier New, Cambria, ＭＳ ゴシック and ＭＳ 明朝 when installed.
+  - The desktop draws each window's title bar where it can. Where it draws none (GNOME's Wayland session), ibisOffice draws its own. `IBIS_WINDOW_DECORATIONS=client` makes ibisOffice draw it on any desktop.
+  - Automatic update: downloads and verifies a tarball from a GitHub release, then replaces the installed folder. The repository is set at build time with `IBIS_UPDATE_REPO=owner/repo` (and optionally `IBIS_UPDATE_BRANCH`). The upstream repository has no Linux releases.
+
 ## [0.8.1] - 2026-10-12
 
 ### Added

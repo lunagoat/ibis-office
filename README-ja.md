@@ -143,6 +143,160 @@ cargo build --release
 - macOS のアプリは `scripts/bundle-macos.sh` で、`target/release/ibisOffice.app` に作られます。
 - ブラウザ版は `scripts/build-web.sh --release` でビルドし、`www/` を配信します（WebGPU に対応したブラウザ：Chrome・Edge・Safari 26 以降）。
 
+### Linux
+
+#### ビルドに必要なパッケージ
+
+Arch Linux：
+
+```bash
+sudo pacman -S --needed base-devel git python fontconfig freetype2 \
+  libxcb libxkbcommon libxkbcommon-x11 wayland vulkan-icd-loader \
+  glib2 gstreamer gst-plugins-base-libs
+```
+
+Debian / Ubuntu：
+
+```bash
+sudo apt install build-essential pkg-config git python3 libfontconfig-dev \
+  libfreetype-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
+  libwayland-dev libvulkan1 libglib2.0-dev \
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+```
+
+Rust の最新の stable が要ります。`python3` は `scripts/bundle-linux.sh`（サードパーティのライセンス一覧の生成）に使います。実行には、グラフィックス カードの Vulkan ドライバーも要ります。
+
+Arch の一覧は、ビルドがリンクまたは読み込むライブラリです。それらが導入済みの Arch 系の環境で確かめたもので、新規に導入した環境では試していません。Debian / Ubuntu のパッケージ名は試していません。
+
+#### ビルド
+
+```bash
+cargo build --release -p ibis-office-app -p ibis-office-updater
+```
+
+実行ファイルは `target/release/ibisOffice` と `target/release/ibisOfficeUpdater`（自動更新が実行するプログラム）に作られます。
+
+#### GStreamer なしのビルド
+
+GStreamer（と開発用ファイル）なしでビルドするには：
+
+```bash
+cargo build --release -p ibis-office-app --no-default-features --features export
+```
+
+プレゼンテーションの動画・音声は再生されません。それ以外はすべて動きます。
+
+#### パッケージと導入
+
+tarball を作る：
+
+```bash
+scripts/bundle-linux.sh
+```
+
+`target/release/ibisOffice-<版>-Linux-<arch>.tar.gz` と、その `.sha256` が作られます。`<版>` は `version.txt` の `Linux` の行の版号で、`<arch>` は `uname -m`（例：`x86_64`）です。`scripts/bundle-linux.sh --no-build` は、`target/release` にある実行ファイルをそのままパッケージします。
+
+展開した tarball から導入する：
+
+```bash
+tar -xzf ibisOffice-*-Linux-*.tar.gz
+cd ibisOffice
+
+# このユーザーに導入（root は不要）：
+./install.sh
+
+# すべてのユーザーに導入（root で実行）：
+./install.sh --prefix /usr/local
+```
+
+`install.sh` はフォルダを `<prefix>/lib/ibisOffice/` にコピーし、`<prefix>/bin/ibisOffice` に実行ファイルへのリンクを作り、`.desktop` エントリとアイコンを XDG のデータ ディレクトリに入れ、`uninstall.sh` のためのマニフェストを書きます。`--prefix` を付けない場合、`<prefix>` は `~/.local` です。
+
+削除するには：
+
+```bash
+<prefix>/lib/ibisOffice/uninstall.sh
+```
+
+ユーザーの設定とファイル（`~/.config/ibisOffice`、`~/.local/share/ibisOffice` など）はそのまま残ります。
+
+#### 実行時に必要なもの
+
+**スペルチェック。** ibisOffice は Hunspell の辞書（`.aff` と `.dic`）を読みます。探す場所は、`$DICPATH` に書かれたフォルダ、`$XDG_DATA_HOME/hunspell`（`~/.local/share/hunspell`）、`$XDG_DATA_DIRS` の各ディレクトリの `hunspell`・`myspell`・`myspell/dicts`（既定は `/usr/local/share` と `/usr/share`）です。書く言語の辞書を入れてください。
+
+- Arch Linux：`hunspell-en_us`（ほかの `hunspell-*` パッケージも同様）
+- Debian / Ubuntu：`hunspell-en-us`（ほかの `hunspell-*` パッケージも同様）
+
+「辞書に追加」した語は、設定フォルダの `user-dictionary.txt`（`~/.config/ibisOffice/user-dictionary.txt`）に保存されます。
+
+**動画・音声。** 再生は GStreamer の `playbin` で行います。システムの GStreamer と、そのクリップのコーデックのプラグインが必要です。
+
+- Arch Linux：`gstreamer gst-plugins-base gst-plugins-good`（さらに `gst-plugins-bad`・`gst-plugins-ugly`・`gst-libav` でコーデックを追加）
+- Debian / Ubuntu：`gstreamer1.0-plugins-base gstreamer1.0-plugins-good`（さらに `gstreamer1.0-plugins-bad`・`gstreamer1.0-plugins-ugly`・`gstreamer1.0-libav`）
+
+コーデックのプラグインがないクリップは再生されません。不足しているプラグインは GStreamer がログに書きます。
+
+**フォント。** Carlito（Calibri と同じ字幅のフォント）は実行ファイルに含まれています。Office のほかの書体は、ユーザーが入れない限り Linux にはありません。次のフォントが代わりに使われ、Office と同じ位置で行が折り返されます。
+
+| Office のフォント | 代わりのフォント | Arch Linux パッケージ | Debian / Ubuntu パッケージ |
+|---|---|---|---|
+| Arial・Helvetica | Liberation Sans（または Arimo） | `ttf-liberation` | `fonts-liberation` |
+| Times New Roman・Century | Liberation Serif（または Tinos） | `ttf-liberation` | `fonts-liberation` |
+| Courier New | Liberation Mono（または Cousine） | `ttf-liberation` | `fonts-liberation` |
+| Cambria | Caladea | `ttf-caladea` | `fonts-crosextra-caladea` |
+| ＭＳ ゴシック | IPAGothic | `otf-ipafont` | `fonts-ipafont-gothic` |
+| ＭＳ Ｐゴシック | IPAPGothic | `otf-ipafont` | `fonts-ipafont-gothic` |
+| ＭＳ 明朝 | IPAMincho | `otf-ipafont` | `fonts-ipafont-mincho` |
+| ＭＳ Ｐ明朝 | IPAPMincho | `otf-ipafont` | `fonts-ipafont-mincho` |
+
+まとめて入れる：
+
+- Arch Linux：`sudo pacman -S ttf-liberation ttf-caladea otf-ipafont`
+- Debian / Ubuntu：`sudo apt install fonts-liberation fonts-crosextra-caladea fonts-ipafont`
+
+#### 自動更新
+
+起動時に GitHub のリポジトリで新しい版を確かめます（設定 ＞「起動時に更新を確かめる」、既定でオン）。リポジトリの `main` ブランチの `version.txt` を読み、対応するリリース（タグ `v<版>`）から tarball（`ibisOffice-<版>-Linux-<arch>.tar.gz`）とその `.sha256` をダウンロードし、`sha256sum` でハッシュを検証してから、`ibisOfficeUpdater` が導入されたフォルダを置き換えます。`curl`・`tar`・`sha256sum` が `PATH` に必要です。
+
+更新のログは `$XDG_STATE_HOME/ibisOffice/updater.log`（既定は `~/.local/state/ibisOffice/updater.log`）にあります。ヘルプ ＞ 更新のログを表示 で開きます。
+
+`target/` から実行した開発ビルド、書き込めないフォルダにある導入（`--prefix` で入れたもの）、`ibisOffice` フォルダの中にいない実行ファイルからは、更新は行われません。同じ版で 2 回失敗すると、その版は提示されなくなります。
+
+**フォークの管理者向け：** ビルド時にリポジトリを指定します。
+
+```bash
+IBIS_UPDATE_REPO=owner/repo cargo build --release -p ibis-office-app -p ibis-office-updater
+```
+
+または：
+
+```bash
+IBIS_UPDATE_REPO=owner/repo scripts/bundle-linux.sh
+```
+
+`version.txt` のあるブランチが `main` でない場合は `IBIS_UPDATE_BRANCH` も指定します。上流のリポジトリ（`ibisjp/ibis-office`）の `version.txt` には `Linux` の行がないので、それを見に行くビルドには何も提示されません。
+
+更新で見つかるリリースの作り方：
+
+1. `version.txt` の `Linux` の行を新しい版号（数字とドットだけ）に変える。
+2. コミットに `v<版>` のタグを付ける。
+3. GitHub のリリースに `ibisOffice-<版>-Linux-<arch>.tar.gz` と `ibisOffice-<版>-Linux-<arch>.tar.gz.sha256`（`scripts/bundle-linux.sh` が作るもの）を添付する。
+
+#### コマンドラインでの書き出しと印刷
+
+`ibisOffice --export png|pdf|pdf-image|ui` はディスプレイ サーバーなしで動きます（`export` フィーチャー付きのビルド。既定でオン）。印刷（ファイル ＞ 印刷）は XDG デスクトップ ポータルの印刷ダイアログを使います。ポータルが印刷に対応していない場合は、PDF をシステムの PDF ビューアーで開きます。
+
+#### タイトルバー
+
+ibisOffice はデスクトップにウィンドウのタイトルバーを描かせます（サーバーサイド デコレーション）。KDE・wlroots コンポジター・Hyprland・X11 のウィンドウ マネージャーは、ウィンドウの装飾を自分で描きます（Hyprland のようなタイル型コンポジターでは、タイトルバーのない枠だけです）。GNOME の Wayland セッションは描かないので、ibisOffice がタイトルバーを自分で描きます（クライアントサイド デコレーション）。`IBIS_WINDOW_DECORATIONS=client` を指定すると、どのデスクトップでも ibisOffice が自分のタイトルバーを描きます（デスクトップが自前の装飾を使い続ける場合、ウィンドウのボタンは付きません）。既定は `server` です。この方法で Hyprland では表示を確かめましたが、GNOME では試していません。
+
+#### 既知の制限
+
+- シナリオ テスト（`cargo test --release -p ibis-office-app --test scenarios`）は Linux で動きますが、923 件のうち 875 件はスキップされます。開く文書（`test/editing/`）が公開リポジトリにないためです。残りの 48 件は通ります。
+- デバッグ ビルドは一部のファイルで上流の `debug_assert!` に引っかかります。リリース ビルドを使ってください。
+- `IBIS_UPDATE_REPO` で Linux のリリースを公開するリポジトリを指定しない限り、自動更新は何も提示しません。
+- 動画・音声にはクリップのコーデックの GStreamer プラグインが必要です。プラグインがないクリップは再生されません。
+- GNOME の Wayland セッションでアプリが描くクライアントサイドのタイトルバーは、GNOME では試されていません。
+
 ## 実装済み
 
 ### docx

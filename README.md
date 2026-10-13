@@ -143,6 +143,160 @@ cargo build --release
 - On macOS, `scripts/bundle-macos.sh` builds the app at `target/release/ibisOffice.app`.
 - For the browser edition, build with `scripts/build-web.sh --release` and serve `www/` (browsers with WebGPU: Chrome, Edge, Safari 26 or later).
 
+### Linux
+
+#### Build dependencies
+
+Arch Linux:
+
+```bash
+sudo pacman -S --needed base-devel git python fontconfig freetype2 \
+  libxcb libxkbcommon libxkbcommon-x11 wayland vulkan-icd-loader \
+  glib2 gstreamer gst-plugins-base-libs
+```
+
+Debian / Ubuntu:
+
+```bash
+sudo apt install build-essential pkg-config git python3 libfontconfig-dev \
+  libfreetype-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
+  libwayland-dev libvulkan1 libglib2.0-dev \
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+```
+
+The latest stable Rust is required. `python3` is needed by `scripts/bundle-linux.sh` (it generates the third-party licence list). To run the program you also need a Vulkan driver for your graphics card.
+
+The Arch list is the set of libraries the build links or loads. It was checked on an Arch-based system that already had them installed, not on a fresh install. The Debian / Ubuntu package names have not been tried.
+
+#### Build
+
+```bash
+cargo build --release -p ibis-office-app -p ibis-office-updater
+```
+
+The programs are `target/release/ibisOffice` and `target/release/ibisOfficeUpdater` (the helper that the automatic update runs).
+
+#### Building without GStreamer
+
+To build without GStreamer (and its development files):
+
+```bash
+cargo build --release -p ibis-office-app --no-default-features --features export
+```
+
+Video and audio clips in presentations will not play. Everything else works.
+
+#### Packaging and installing
+
+Build a tarball:
+
+```bash
+scripts/bundle-linux.sh
+```
+
+This produces `target/release/ibisOffice-<version>-Linux-<arch>.tar.gz` and a `.sha256` beside it. `<version>` is the `Linux` line of `version.txt`; `<arch>` is `uname -m` (e.g. `x86_64`). Use `scripts/bundle-linux.sh --no-build` to package executables already in `target/release`.
+
+Install from the unpacked tarball:
+
+```bash
+tar -xzf ibisOffice-*-Linux-*.tar.gz
+cd ibisOffice
+
+# For this user (no root needed):
+./install.sh
+
+# For every user (run as root):
+./install.sh --prefix /usr/local
+```
+
+`install.sh` copies the folder to `<prefix>/lib/ibisOffice/`, links `<prefix>/bin/ibisOffice` to the executable, installs a `.desktop` entry and icons into the XDG data directories, and writes a manifest for `uninstall.sh`. Without `--prefix`, `<prefix>` is `~/.local`.
+
+To remove:
+
+```bash
+<prefix>/lib/ibisOffice/uninstall.sh
+```
+
+The user's settings and files (`~/.config/ibisOffice`, `~/.local/share/ibisOffice`, etc.) are kept.
+
+#### Run-time dependencies
+
+**Spell checking.** ibisOffice reads Hunspell dictionaries (`.aff` and `.dic`). It looks in the folders named by `$DICPATH`, then `$XDG_DATA_HOME/hunspell` (`~/.local/share/hunspell`), then `hunspell`, `myspell` and `myspell/dicts` under each directory in `$XDG_DATA_DIRS` (`/usr/local/share` and `/usr/share` by default). Install the dictionaries for the languages you write in:
+
+- Arch Linux: `hunspell-en_us` (or another `hunspell-*` package)
+- Debian / Ubuntu: `hunspell-en-us` (or another `hunspell-*` package)
+
+Words added with "Add to Dictionary" are kept in `user-dictionary.txt` beside the settings (`~/.config/ibisOffice/user-dictionary.txt`).
+
+**Video and audio.** Playback uses GStreamer's `playbin`. The system's GStreamer and its plugins for the clip's codecs must be installed. Common choices:
+
+- Arch Linux: `gstreamer gst-plugins-base gst-plugins-good` (and `gst-plugins-bad`, `gst-plugins-ugly` or `gst-libav` for more codecs)
+- Debian / Ubuntu: `gstreamer1.0-plugins-base gstreamer1.0-plugins-good` (and `gstreamer1.0-plugins-bad`, `gstreamer1.0-plugins-ugly` or `gstreamer1.0-libav`)
+
+Without the plugin for a clip's codec, that clip plays nothing; GStreamer logs which plugin is missing.
+
+**Fonts.** Carlito (the metric-compatible stand-in for Calibri) is bundled in the executable. The other Microsoft Office typefaces are not on Linux unless the user installs them. These fonts stand in for them, so that lines break where they do in Office:
+
+| Office font | Stand-in font | Arch Linux package | Debian / Ubuntu package |
+|---|---|---|---|
+| Arial, Helvetica | Liberation Sans (or Arimo) | `ttf-liberation` | `fonts-liberation` |
+| Times New Roman, Century | Liberation Serif (or Tinos) | `ttf-liberation` | `fonts-liberation` |
+| Courier New | Liberation Mono (or Cousine) | `ttf-liberation` | `fonts-liberation` |
+| Cambria | Caladea | `ttf-caladea` | `fonts-crosextra-caladea` |
+| ＭＳ ゴシック (MS Gothic) | IPAGothic | `otf-ipafont` | `fonts-ipafont-gothic` |
+| ＭＳ Ｐゴシック (MS PGothic) | IPAPGothic | `otf-ipafont` | `fonts-ipafont-gothic` |
+| ＭＳ 明朝 (MS Mincho) | IPAMincho | `otf-ipafont` | `fonts-ipafont-mincho` |
+| ＭＳ Ｐ明朝 (MS PMincho) | IPAPMincho | `otf-ipafont` | `fonts-ipafont-mincho` |
+
+Install them all at once:
+
+- Arch Linux: `sudo pacman -S ttf-liberation ttf-caladea otf-ipafont`
+- Debian / Ubuntu: `sudo apt install fonts-liberation fonts-crosextra-caladea fonts-ipafont`
+
+#### Automatic update
+
+At startup ibisOffice checks a GitHub repository for a newer version (Settings > "Check for updates at startup", on by default). It reads `version.txt` on the repository's `main` branch, downloads the tarball (`ibisOffice-<version>-Linux-<arch>.tar.gz`) and its `.sha256` from the matching release (tagged `v<version>`), verifies the hash with `sha256sum`, and runs `ibisOfficeUpdater` to replace the installed folder. `curl`, `tar` and `sha256sum` must be on `PATH`.
+
+The update log is at `$XDG_STATE_HOME/ibisOffice/updater.log` (`~/.local/state/ibisOffice/updater.log` by default). Help > Show Update Log opens it.
+
+Update is not attempted from a build run out of `target/`, from a folder the user cannot write to (a system-wide install with `--prefix`), or when the executable is not in an `ibisOffice` folder beside its `ibisOfficeUpdater`. After two failed attempts at the same version, ibisOffice stops offering it.
+
+**For the owner of a fork:** set the repository when building:
+
+```bash
+IBIS_UPDATE_REPO=owner/repo cargo build --release -p ibis-office-app -p ibis-office-updater
+```
+
+or with the bundle script:
+
+```bash
+IBIS_UPDATE_REPO=owner/repo scripts/bundle-linux.sh
+```
+
+Set `IBIS_UPDATE_BRANCH` if the branch that holds `version.txt` is not `main`. The upstream repository (`ibisjp/ibis-office`) has no `Linux` line in its `version.txt`, so a build that asks it is offered nothing.
+
+To cut a release the updater will find:
+
+1. Add or update the `Linux` line of `version.txt` with the new version number (digits and dots only).
+2. Tag the commit `v<version>`.
+3. Attach `ibisOffice-<version>-Linux-<arch>.tar.gz` and `ibisOffice-<version>-Linux-<arch>.tar.gz.sha256` (from `scripts/bundle-linux.sh`) to the GitHub release.
+
+#### Command-line export and printing
+
+`ibisOffice --export png|pdf|pdf-image|ui` works without a display server (built with the `export` feature, which is on by default). Printing (`File > Print`) uses the desktop's print dialog through the XDG desktop portal; where no portal prints, the PDF is opened in the system's PDF viewer.
+
+#### Title bar
+
+ibisOffice asks the desktop to draw the window's title bar (server-side decorations). KDE, the wlroots compositors, Hyprland and X11 window managers decorate the window themselves (on a tiling compositor such as Hyprland that is a border with no title bar). GNOME's Wayland session draws none: there ibisOffice draws the title bar itself (client-side decorations). `IBIS_WINDOW_DECORATIONS=client` makes ibisOffice draw its own title bar on any desktop (without the window buttons where the desktop keeps its own decorations); `server` is the default. The title bar was tried this way on Hyprland. It has not been tested on GNOME.
+
+#### Known limitations
+
+- The scenario test suite (`cargo test --release -p ibis-office-app --test scenarios`) runs on Linux, but 875 of its 923 scenarios are skipped there: the documents they open (`test/editing/`) are not in the public repository. The other 48 pass.
+- Debug builds stop on an upstream `debug_assert!` with some files. Use release builds.
+- Automatic update offers nothing unless the build names a repository (with `IBIS_UPDATE_REPO`) that publishes Linux releases.
+- Video and audio need GStreamer plugins for the clip's codecs; without the right plugin a clip plays nothing.
+- The client-side title bar drawn by the app on GNOME's Wayland session has not been tested on GNOME.
+
 ## Implemented Features
 
 ### docx
