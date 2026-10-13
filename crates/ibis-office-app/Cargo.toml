@@ -29,7 +29,7 @@ harfrust = "=0.5.2"
 
 # For the `export` feature: GPUI's headless renderer is part of its test
 # support, which also turns on GPUI's entity leak tracking (a small cost).
-[target.'cfg(any(target_os = "macos", windows))'.dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 gpui-pre-platform = { version = "=0.3.6", features = ["test-support"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "gif", "jpeg"], optional = true }
 miniz_oxide = { version = "0.8", optional = true }
@@ -46,7 +46,6 @@ skrifa = { version = "=0.42.1", optional = true }
 subsetter = { version = "=0.2.6", optional = true }
 
 # Automatic update (shell/update.rs): the log, paths and versions it shares with ibisOfficeUpdater.
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
 ibis-office-updater = { path = "../ibis-office-updater" }
 
 # macOS only.
