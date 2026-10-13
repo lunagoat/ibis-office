@@ -42,6 +42,7 @@ pub(crate) fn open_over(parent: Option<Bounds<Pixels>>, display: Option<DisplayI
         display_id: display,
         titlebar: Some(TitlebarOptions { title: Some(i18n::text("help.about")), ..Default::default() }),
         app_id: Some(crate::APP_ID.into()),
+        window_decorations: crate::shell::window_frame::decorations(),
         ..Default::default()
     };
     let opened = cx.open_window(options, |window, cx| {
@@ -76,7 +77,7 @@ impl Render for AboutWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         window.set_window_title(&i18n::text("help.about"));
         let theme = cx.theme().clone();
-        v_flex()
+        let view = v_flex()
             .id("about")
             .track_focus(&self.focus)
             .size_full()
@@ -90,6 +91,7 @@ impl Render for AboutWindow {
             .child(div().id("about-powered").mt_3().text_color(theme.link).underline().cursor_pointer().child(POWERED_BY).on_click(|_, _, cx| cx.open_url(PROJECT_URL)))
             .child(div().id("about-url").text_size(px(12.)).text_color(theme.link).cursor_pointer().child(PROJECT_URL).on_click(|_, _, cx| cx.open_url(PROJECT_URL)))
             .child(div().mt_3().text_size(px(12.)).text_color(theme.muted_foreground).child("Copyright (c) ibis inc."))
-            .child(div().text_size(px(12.)).text_color(theme.muted_foreground).child(i18n::text("about.license")))
+            .child(div().text_size(px(12.)).text_color(theme.muted_foreground).child(i18n::text("about.license")));
+        crate::shell::window_frame::under_title_bar(i18n::text("help.about"), window, view)
     }
 }

@@ -660,6 +660,7 @@ impl SlideEditor {
                 titlebar: None,
                 focus: kind == ShowKind::Presenter,
                 app_id: Some(crate::APP_ID.into()),
+                window_decorations: crate::shell::window_frame::decorations(),
                 ..Default::default()
             };
             let editor = editor.clone();

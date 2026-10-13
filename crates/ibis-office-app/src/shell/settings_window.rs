@@ -51,6 +51,7 @@ pub(crate) fn open_over(parent: Option<Bounds<Pixels>>, display: Option<DisplayI
         display_id: display,
         titlebar: Some(TitlebarOptions { title: Some(i18n::text("settings.title")), ..Default::default() }),
         app_id: Some(crate::APP_ID.into()),
+        window_decorations: crate::shell::window_frame::decorations(),
         ..Default::default()
     };
     let opened = cx.open_window(options, |window, cx| {
@@ -146,6 +147,7 @@ impl Render for SettingsWindow {
                 ),
             )
             .child(div().text_sm().text_color(theme.muted_foreground).child(i18n::text("fix.update.setting.note")));
-        h_flex().id("settings").track_focus(&self.focus).size_full().items_start().bg(theme.background).text_color(theme.foreground).child(list).child(detail)
+        let view = h_flex().id("settings").track_focus(&self.focus).size_full().items_start().bg(theme.background).text_color(theme.foreground).child(list).child(detail);
+        crate::shell::window_frame::under_title_bar(i18n::text("settings.title"), window, view)
     }
 }

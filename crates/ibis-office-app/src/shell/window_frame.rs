@@ -12,9 +12,12 @@
 //! allows (gpui-component's `TitleBar`). The edges such a window is resized
 //! by and its shadow are gpui-component's too (`Root`).
 //!
-//! `IBIS_WINDOW_DECORATIONS=client` asks for client-side decorations
-//! everywhere (for trying this bar on another desktop), `server` is the
-//! default.
+//! `IBIS_WINDOW_DECORATIONS=client` asks for client-side decorations and
+//! draws this bar whatever the desktop answers: Hyprland and KWin keep to
+//! their own decorations when asked, so the bar could not be tried there
+//! otherwise (and Hyprland's are borders with no title bar). The bar then
+//! has no buttons: gpui-component draws those only in a window the desktop
+//! says is client-side decorated. `server` is the default.
 
 use gpui_kit::*;
 
@@ -24,8 +27,12 @@ pub(crate) fn decorations() -> Option<WindowDecorations> {
     if !cfg!(target_os = "linux") {
         return None;
     }
-    let client = std::env::var("IBIS_WINDOW_DECORATIONS").is_ok_and(|v| v.eq_ignore_ascii_case("client"));
-    Some(if client { WindowDecorations::Client } else { WindowDecorations::Server })
+    Some(if client_asked() { WindowDecorations::Client } else { WindowDecorations::Server })
+}
+
+/// Whether `IBIS_WINDOW_DECORATIONS=client` is set.
+fn client_asked() -> bool {
+    std::env::var("IBIS_WINDOW_DECORATIONS").is_ok_and(|v| v.eq_ignore_ascii_case("client"))
 }
 
 /// The title bar of a window titled `title`, for the top of its view: `None`
@@ -33,7 +40,7 @@ pub(crate) fn decorations() -> Option<WindowDecorations> {
 #[cfg(target_os = "linux")]
 pub(crate) fn title_bar(title: impl Into<SharedString>, window: &Window) -> Option<AnyElement> {
     use gpui_kit::component::TitleBar;
-    if window.is_fullscreen() || !matches!(window.window_decorations(), Decorations::Client { .. }) {
+    if window.is_fullscreen() || !(client_asked() || matches!(window.window_decorations(), Decorations::Client { .. })) {
         return None;
     }
     let title: SharedString = title.into();
@@ -50,4 +57,14 @@ pub(crate) fn title_bar(title: impl Into<SharedString>, window: &Window) -> Opti
 #[cfg(not(target_os = "linux"))]
 pub(crate) fn title_bar(_title: impl Into<SharedString>, _window: &Window) -> Option<AnyElement> {
     None
+}
+
+/// `content`, the whole of a small window's view (the settings, the about
+/// window, a password asked for), under the window's own title bar where the
+/// desktop draws none; as it is everywhere else.
+pub(crate) fn under_title_bar(title: impl Into<SharedString>, window: &Window, content: impl IntoElement) -> AnyElement {
+    match title_bar(title, window) {
+        Some(bar) => div().size_full().flex().flex_col().child(bar).child(div().flex_1().min_h_0().child(content)).into_any_element(),
+        None => content.into_any_element(),
+    }
 }

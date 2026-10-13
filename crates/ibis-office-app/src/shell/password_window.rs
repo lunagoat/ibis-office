@@ -31,6 +31,8 @@ pub(crate) struct PasswordWindow {
     first: Entity<InputState>,
     second: Entity<InputState>,
     error: Option<SharedString>,
+    /// The window's title, for the title bar it draws itself where the desktop draws none (`window_frame`); set as the window opens.
+    title: SharedString,
 }
 
 fn open_window(view: impl FnOnce(&mut Window, &mut App) -> PasswordWindow, title: SharedString, height: f32, cx: &mut App) {
@@ -40,9 +42,10 @@ fn open_window(view: impl FnOnce(&mut Window, &mut App) -> PasswordWindow, title
         Some(p) => Bounds::new(point(p.origin.x + (p.size.width - width) / 2.0, p.origin.y + (p.size.height - height) / 2.0), size(width, height)),
         None => Bounds::centered(None, size(width, height), cx),
     };
-    let options = WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), titlebar: Some(TitlebarOptions { title: Some(title), ..Default::default() }), app_id: Some(crate::APP_ID.into()), ..Default::default() };
+    let options = WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), titlebar: Some(TitlebarOptions { title: Some(title.clone()), ..Default::default() }), app_id: Some(crate::APP_ID.into()), window_decorations: crate::shell::window_frame::decorations(), ..Default::default() };
     let _ = cx.open_window(options, |window, cx| {
-        let made = view(window, cx);
+        let mut made = view(window, cx);
+        made.title = title;
         let first = made.first.clone();
         let view = cx.new(|_| made);
         first.update(cx, |input, cx| input.focus(window, cx));
@@ -61,6 +64,7 @@ pub(crate) fn ask_to_open(editor: WeakEntity<SlideEditor>, path: std::path::Path
             first: cx.new(|cx| InputState::new(window, cx).masked(true).placeholder(i18n::text("_shell.password"))),
             second: cx.new(|cx| InputState::new(window, cx)),
             error: wrong.then(|| i18n::text("_shell.the-password-is-not-correct")),
+            title: SharedString::default(),
         },
         i18n::text("_shell.enter-password"),
         190.0,
@@ -79,6 +83,7 @@ pub(crate) fn ask_to_set(editor: WeakEntity<SlideEditor>, had: bool, window: &mu
             first: cx.new(|cx| InputState::new(window, cx).masked(true).placeholder(i18n::text("_shell.password"))),
             second: cx.new(|cx| InputState::new(window, cx).masked(true).placeholder(i18n::text("_shell.confirm-password"))),
             error: None,
+            title: SharedString::default(),
         },
         i18n::text("_shell.protect-with-password"),
         260.0,
@@ -97,6 +102,7 @@ pub(crate) fn ask_to_modify(editor: WeakEntity<SlideEditor>, window: &mut Window
             first: cx.new(|cx| InputState::new(window, cx).masked(true).placeholder(i18n::text("_shell.password"))),
             second: cx.new(|cx| InputState::new(window, cx)),
             error: None,
+            title: SharedString::default(),
         },
         i18n::text("pptx.password-window.enter-password-modify"),
         190.0,
@@ -115,6 +121,7 @@ pub(crate) fn ask_to_set_modify(editor: WeakEntity<SlideEditor>, had: bool, wind
             first: cx.new(|cx| InputState::new(window, cx).masked(true).placeholder(i18n::text("_shell.password"))),
             second: cx.new(|cx| InputState::new(window, cx).masked(true).placeholder(i18n::text("_shell.confirm-password"))),
             error: None,
+            title: SharedString::default(),
         },
         i18n::text("pptx.password-window.set-password-modify"),
         260.0,
@@ -202,7 +209,7 @@ impl PasswordWindow {
 }
 
 impl Render for PasswordWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let setting = matches!(self.mode, Mode::Set { .. } | Mode::SetModify { .. });
         let had = matches!(self.mode, Mode::Set { had: true } | Mode::SetModify { had: true });
@@ -229,6 +236,6 @@ impl Render for PasswordWindow {
         buttons = buttons
             .child(Button::new("password-cancel").small().ghost().label(i18n::text(if matches!(self.mode, Mode::Modify) { "pptx.password-window.open-read-only" } else { "_shell.cancel" })).on_click(cx.listener(|this, _, window, _| this.close(window))))
             .child(Button::new("password-ok").primary().small().label(i18n::text("OK")).on_click(cx.listener(|this, _, window, cx| this.accept(window, cx))));
-        body.child(buttons)
+        crate::shell::window_frame::under_title_bar(self.title.clone(), window, body.child(buttons))
     }
 }

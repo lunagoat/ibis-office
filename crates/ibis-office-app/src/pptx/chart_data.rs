@@ -84,7 +84,7 @@ impl SlideEditor {
         let slot: Rc<RefCell<Option<Entity<SlideEditor>>>> = Default::default();
         let set = slot.clone();
         let ranges = refs.clone();
-        let options = WindowOptions { window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(760.), px(520.)), cx))), app_id: Some(crate::APP_ID.into()), ..Default::default() };
+        let options = WindowOptions { window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(760.), px(520.)), cx))), app_id: Some(crate::APP_ID.into()), window_decorations: crate::shell::window_frame::decorations(), ..Default::default() };
         let opened_window = cx.open_window(options, move |window, app| {
             let view = app.new(|cx| {
                 let mut editor = SlideEditor::new(ibis_doc_model::Presentation::new(), window, cx);

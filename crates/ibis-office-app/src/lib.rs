@@ -430,6 +430,7 @@ pub(crate) fn open_window_with(cx: &mut App, setup: impl FnOnce(&mut SlideEditor
             cx,
         ))),
         app_id: Some(APP_ID.into()),
+        window_decorations: shell::window_frame::decorations(),
         ..Default::default()
     };
     cx.open_window(options, |window, cx| {
