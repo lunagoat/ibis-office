@@ -26,6 +26,7 @@ Our aim is simple: a document made in Microsoft Office should look the same when
 - **Download the desktop app** from [Releases](https://github.com/ibisjp/ibis-office/releases/latest):
   - macOS (11 or later): get `ibisOffice-<version>-macOS.zip`, unzip it and move `ibisOffice.app` to your Applications folder.
   - Windows (64-bit): get `ibisOffice-<version>-Windows.zip`, unzip it and run `ibisOffice.exe` in the `ibisOffice` folder.
+  - Linux (x86_64): the Linux build is published by this fork, [lunagoat/ibis-office](https://github.com/lunagoat/ibis-office/releases/latest). Run `curl -fsSL https://raw.githubusercontent.com/lunagoat/ibis-office/HEAD/scripts/install-linux.sh | sh` to install it for your user, or see [Linux](#linux).
 - **Try the web version**: open the [playground](https://ibisjp.github.io/ibis-office/) in your browser — no installation (a browser with WebGPU). Open the sample Word, Excel and PowerPoint documents and try it right away.
 - **Watch the video**: an introduction to ibisOffice (YouTube).
 
@@ -145,6 +146,32 @@ cargo build --release
 
 ### Linux
 
+#### Installing a release
+
+This fork publishes the Linux build on its [Releases](https://github.com/lunagoat/ibis-office/releases/latest) page. To download the newest release and install it for the current user (in `~/.local`; root is not needed):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lunagoat/ibis-office/HEAD/scripts/install-linux.sh | sh
+```
+
+The script (`scripts/install-linux.sh`) downloads `ibisOffice-<version>-Linux-x86_64.tar.gz` and its `.sha256`, checks the tarball against the hash, unpacks it in a temporary folder and runs the `install.sh` inside. Doing the same by hand works too: download the two files, unpack the tarball and run `ibisOffice/install.sh` (see [Packaging and installing](#packaging-and-installing)). To install for every user, run it as root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lunagoat/ibis-office/HEAD/scripts/install-linux.sh | sudo sh -s -- --prefix /usr/local
+```
+
+Start ibisOffice from the applications menu, or with `ibisOffice` if `~/.local/bin` is on your `PATH`. A copy installed for the current user keeps itself up to date (see [Automatic update](#automatic-update)); running the command again also installs the newest release. To remove it, run `~/.local/lib/ibisOffice/uninstall.sh`.
+
+The release is built on Ubuntu 22.04 for x86_64. It runs on distributions with glibc 2.35 or later: Ubuntu 22.04, Debian 12, Fedora 36 and those released since, and rolling distributions such as Arch Linux. It does not run on distributions built on musl (Alpine Linux). For other processors, build it from source.
+
+It needs these libraries: GStreamer and the libraries of its base plugins, GLib, libxcb, libxkbcommon, libxkbcommon-x11, and the Vulkan loader with a Vulkan driver for your graphics card. `install.sh` looks for them and names the ones that are missing, with the command that installs them. To install them all at once:
+
+- Debian / Ubuntu: `sudo apt install libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 libxcb1 libxkbcommon0 libxkbcommon-x11-0 libvulkan1`
+- Fedora: `sudo dnf install gstreamer1 gstreamer1-plugins-base glib2 libxcb libxkbcommon libxkbcommon-x11 vulkan-loader`
+- Arch Linux: `sudo pacman -S --needed gstreamer gst-plugins-base-libs glib2 libxcb libxkbcommon libxkbcommon-x11 vulkan-icd-loader`
+
+What was tried: a tarball built this way (in a clean Ubuntu 22.04 root folder) was installed with the script on base installs of Ubuntu 22.04, Ubuntu 24.04 and Fedora 44 that had none of the libraries, and on CachyOS (Arch-based). On the first three, `install.sh` named the missing libraries, the command it gave installed them, and `ibisOffice --export png` then drew a slide with Mesa's software Vulkan driver. On CachyOS nothing was missing and the same export ran on the graphics card. Debian, openSUSE and other distributions have not been tried, and the windows of the app have been tried only on CachyOS (Hyprland).
+
 #### Build dependencies
 
 Arch Linux:
@@ -166,7 +193,7 @@ sudo apt install build-essential pkg-config git python3 libfontconfig-dev \
 
 The latest stable Rust is required. `python3` is needed by `scripts/bundle-linux.sh` (it generates the third-party licence list). To run the program you also need a Vulkan driver for your graphics card.
 
-The Arch list is the set of libraries the build links or loads. It was checked on an Arch-based system that already had them installed, not on a fresh install. The Debian / Ubuntu package names have not been tried.
+The Debian / Ubuntu list is what the release workflow (`.github/workflows/release-linux.yml`) installs on Ubuntu 22.04 to build the release. The Arch list is the set of libraries the build links or loads. It was checked on an Arch-based system that already had them installed, not on a fresh install.
 
 #### Build
 
@@ -255,11 +282,13 @@ Install them all at once:
 
 #### Automatic update
 
-At startup ibisOffice checks a GitHub repository for a newer version (Settings > "Check for updates at startup", on by default). It reads `version.txt` on the repository's `main` branch, downloads the tarball (`ibisOffice-<version>-Linux-<arch>.tar.gz`) and its `.sha256` from the matching release (tagged `v<version>`), verifies the hash with `sha256sum`, and runs `ibisOfficeUpdater` to replace the installed folder. `curl`, `tar` and `sha256sum` must be on `PATH`.
+At startup ibisOffice checks a GitHub repository for a newer version (Settings > "Check for updates at startup", on by default). It reads `version.txt` on a branch of that repository, downloads the tarball (`ibisOffice-<version>-Linux-<arch>.tar.gz`) and its `.sha256` from the matching release (tagged `v<version>`), verifies the hash with `sha256sum`, and runs `ibisOfficeUpdater` to replace the installed folder. `curl`, `tar` and `sha256sum` must be on `PATH`.
 
 The update log is at `$XDG_STATE_HOME/ibisOffice/updater.log` (`~/.local/state/ibisOffice/updater.log` by default). Help > Show Update Log opens it.
 
 Update is not attempted from a build run out of `target/`, from a folder the user cannot write to (a system-wide install with `--prefix`), or when the executable is not in an `ibisOffice` folder beside its `ibisOfficeUpdater`. After two failed attempts at the same version, ibisOffice stops offering it.
+
+The releases of this fork ask `lunagoat/ibis-office` and read `version.txt` on its default branch (`linux`). A build of your own asks ibis inc.'s repository, `ibisjp/ibis-office`, and its `main` branch, unless you name another.
 
 **For the owner of a fork:** set the repository when building:
 
@@ -275,11 +304,14 @@ IBIS_UPDATE_REPO=owner/repo scripts/bundle-linux.sh
 
 Set `IBIS_UPDATE_BRANCH` if the branch that holds `version.txt` is not `main`. The upstream repository (`ibisjp/ibis-office`) has no `Linux` line in its `version.txt`, so a build that asks it is offered nothing.
 
-To cut a release the updater will find:
+To cut a release that the updater and `scripts/install-linux.sh` will find:
 
-1. Add or update the `Linux` line of `version.txt` with the new version number (digits and dots only).
-2. Tag the commit `v<version>`.
-3. Attach `ibisOffice-<version>-Linux-<arch>.tar.gz` and `ibisOffice-<version>-Linux-<arch>.tar.gz.sha256` (from `scripts/bundle-linux.sh`) to the GitHub release.
+1. Change the `Linux` line of `version.txt` to the new version number (digits and dots only), commit it and push it to the default branch. This fork numbers its releases `<upstream version>.<n>` (`0.8.1.1` is its first release of upstream's 0.8.1), so that its tags are not upstream's.
+2. Tag that commit `v<version>` and push the tag.
+
+The tag starts the release workflow (`.github/workflows/release-linux.yml`). It builds the tarball on Ubuntu 22.04 with `IBIS_UPDATE_REPO` set to the repository it runs in and `IBIS_UPDATE_BRANCH` to its default branch, installs it and exports a presentation with it as a check, and attaches `ibisOffice-<version>-Linux-x86_64.tar.gz` and its `.sha256` to the GitHub release `v<version>`. The workflow can also be started from the repository's Actions page; it then makes the tag itself. To publish without the workflow, attach the two files `scripts/bundle-linux.sh` makes to a release tagged `v<version>`.
+
+In a fork of this repository, also change `REPO` at the top of `scripts/install-linux.sh` and the addresses in this section to your repository.
 
 #### Command-line export and printing
 
@@ -293,7 +325,8 @@ ibisOffice asks the desktop to draw the window's title bar (server-side decorati
 
 - The scenario test suite (`cargo test --release -p ibis-office-app --test scenarios`) runs on Linux, but 875 of its 923 scenarios are skipped there: the documents they open (`test/editing/`) are not in the public repository. The other 48 pass.
 - Debug builds stop on an upstream `debug_assert!` with some files. Use release builds.
-- Automatic update offers nothing unless the build names a repository (with `IBIS_UPDATE_REPO`) that publishes Linux releases.
+- The published release is for x86_64 and glibc 2.35 or later. There is no build for aarch64 or for musl.
+- A build of your own is offered no updates unless it names a repository (with `IBIS_UPDATE_REPO`) that publishes Linux releases.
 - Video and audio need GStreamer plugins for the clip's codecs; without the right plugin a clip plays nothing.
 - The client-side title bar drawn by the app on GNOME's Wayland session has not been tested on GNOME.
 

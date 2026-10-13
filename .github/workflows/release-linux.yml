@@ -1,0 +1,121 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) ibis inc.
+# Additional terms under AGPL-3.0 section 7(b): see NOTICE.
+# The Linux release: the tarball of scripts/bundle-linux.sh and its .sha256,
+# attached to the GitHub release v<version> (<version> is version.txt's Linux
+# line). The automatic update and scripts/install-linux.sh download them from
+# there.
+#
+# It runs when a tag v* is pushed, which must be v<version>, and from the
+# Actions page ("Run workflow"), which makes that tag on the commit it runs on.
+# A version that has its release already is not built again: a new release
+# takes a new version in version.txt.
+#
+# The runner is Ubuntu 22.04, so that the executables ask for no newer C
+# library than its glibc 2.35 and start on the distributions since then.
+name: Linux release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  CARGO_TERM_COLOR: never
+
+jobs:
+  tarball:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: The version and its tag
+        id: version
+        run: |
+          version=$(awk -F'\t' '$1 == "Linux" { sub(/\r$/, "", $2); print $2 }' version.txt)
+          if [[ ! $version =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "::error::version.txt has no Linux line of digits and dots"
+            exit 1
+          fi
+          if [[ $GITHUB_REF_TYPE == tag && $GITHUB_REF_NAME != "v$version" ]]; then
+            echo "::error::the tag is $GITHUB_REF_NAME, and version.txt's Linux line is $version (its tag is v$version)"
+            exit 1
+          fi
+          if gh release view "v$version" > /dev/null 2>&1; then
+            echo "::error::release v$version is there already: a new release takes a new version in version.txt's Linux line"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The packages of the README's "Build dependencies" for Debian and Ubuntu.
+      - name: What the build needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config git python3 \
+            libfontconfig-dev libfreetype-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libvulkan1 libglib2.0-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      # The automatic update of this build asks the repository it was built in.
+      - name: Build the tarball
+        env:
+          IBIS_UPDATE_REPO: ${{ github.repository }}
+          IBIS_UPDATE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: scripts/bundle-linux.sh 2>&1 | tee build.log
+
+      # Shown at the top of the run's page, without opening the log.
+      - name: The end of the build log, if it failed
+        if: failure()
+        run: |
+          [[ -f build.log ]] || exit 0
+          tail -n 30 build.log | awk 'BEGIN { printf "::error title=The end of the build log::" } { gsub(/%/, "%25"); printf "%s%%0A", $0 } END { print "" }'
+
+      # Installed in a folder of its own: every library it is linked with is
+      # found, and a presentation is drawn with no display (Mesa's software Vulkan).
+      - name: Try the tarball
+        run: |
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
+          mkdir -p try/home try/out
+          tar -xzf target/release/ibisOffice-${{ steps.version.outputs.version }}-Linux-*.tar.gz -C try
+          HOME=$PWD/try/home XDG_DATA_HOME= try/ibisOffice/install.sh
+          app=try/home/.local/lib/ibisOffice/ibisOffice
+          if ldd "$app" | grep 'not found'; then
+            echo "::error::the program is linked with libraries the runner does not have"
+            exit 1
+          fi
+          HOME=$PWD/try/home "$app" --export png --out-dir try/out --slides 1 test/benchmark/earnings-presentation.pptx
+          ls -l try/out
+          [[ -n $(find try/out -name '*.png' -size +1k) ]]
+
+      - name: Publish the release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cat > notes.md <<EOF
+          Install, for the current user (in \`~/.local\`):
+
+              curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/HEAD/scripts/install-linux.sh | sh
+
+          or unpack the tarball and run \`ibisOffice/install.sh\`. A copy installed for the current user updates itself.
+
+          Built on Ubuntu 22.04: it runs on distributions with glibc 2.35 or later (Ubuntu 22.04, Debian 12, Fedora 36 and those since). The README's Linux section lists the libraries it needs; \`install.sh\` names any that are missing.
+          EOF
+          gh release create "v$VERSION" \
+            target/release/ibisOffice-"$VERSION"-Linux-*.tar.gz \
+            target/release/ibisOffice-"$VERSION"-Linux-*.tar.gz.sha256 \
+            --target "$GITHUB_SHA" --title "ibisOffice $VERSION for Linux" --notes-file notes.md

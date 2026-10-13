@@ -26,6 +26,7 @@ ibisOffice は、Word・Excel・PowerPoint の文書を、表示し、編集し�
 - **デスクトップアプリ版をダウンロード**：[Releases](https://github.com/ibisjp/ibis-office/releases/latest) から
   - macOS（11 以降）：`ibisOffice-<版>-macOS.zip` をダウンロードし、展開した `ibisOffice.app` をアプリケーション フォルダに移してください。
   - Windows（64 ビット）：`ibisOffice-<版>-Windows.zip` をダウンロードし、展開した `ibisOffice` フォルダの `ibisOffice.exe` を起動してください。
+  - Linux（x86_64）：Linux 版はこのフォーク [lunagoat/ibis-office](https://github.com/lunagoat/ibis-office/releases/latest) が公開しています。`curl -fsSL https://raw.githubusercontent.com/lunagoat/ibis-office/HEAD/scripts/install-linux.sh | sh` を実行すると、いまのユーザー向けに導入されます。詳しくは [Linux](#linux) を見てください。
 - **Web 版を試す**：インストールせずに、ブラウザで [playground](https://ibisjp.github.io/ibis-office/) を開いてください（WebGPU に対応したブラウザ）。見本の文書（Word・Excel・PowerPoint）を開いて、すぐに試せます。
 - **動画で見る**：ibisOffice の紹介動画（YouTube）。
 
@@ -145,6 +146,32 @@ cargo build --release
 
 ### Linux
 
+#### リリースの導入
+
+このフォークは Linux 版を [Releases](https://github.com/lunagoat/ibis-office/releases/latest) で公開しています。最新のリリースをダウンロードして、いまのユーザー向けに導入するには（`~/.local` に入ります。root は要りません）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lunagoat/ibis-office/HEAD/scripts/install-linux.sh | sh
+```
+
+このスクリプト（`scripts/install-linux.sh`）は、`ibisOffice-<版>-Linux-x86_64.tar.gz` とその `.sha256` をダウンロードし、tarball をハッシュと照合してから一時フォルダに展開し、中の `install.sh` を実行します。手作業でも同じことができます。2 つのファイルをダウンロードし、tarball を展開して `ibisOffice/install.sh` を実行してください（「パッケージと導入」を参照）。すべてのユーザー向けに導入するには、root で実行します：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lunagoat/ibis-office/HEAD/scripts/install-linux.sh | sudo sh -s -- --prefix /usr/local
+```
+
+アプリケーション メニューから、または `~/.local/bin` が `PATH` にあれば `ibisOffice` で起動します。いまのユーザー向けに導入したものは自動で更新されます（「自動更新」を参照）。同じコマンドをもう一度実行しても、最新のリリースが導入されます。削除するには `~/.local/lib/ibisOffice/uninstall.sh` を実行します。
+
+リリースは Ubuntu 22.04 上で x86_64 向けにビルドしています。glibc 2.35 以降のディストリビューションで動きます。Ubuntu 22.04、Debian 12、Fedora 36 とそれ以降、および Arch Linux のようなローリング リリースのディストリビューションです。musl のディストリビューション（Alpine Linux）では動きません。ほかのプロセッサ向けには、ソースからビルドしてください。
+
+次のライブラリが必要です。GStreamer とその基本プラグインのライブラリ、GLib、libxcb、libxkbcommon、libxkbcommon-x11、Vulkan ローダーと、お使いのグラフィックス カードの Vulkan ドライバーです。`install.sh` はこれらを探し、足りないものの名前と、それを導入するコマンドを表示します。まとめて導入するには：
+
+- Debian / Ubuntu：`sudo apt install libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libglib2.0-0 libxcb1 libxkbcommon0 libxkbcommon-x11-0 libvulkan1`
+- Fedora：`sudo dnf install gstreamer1 gstreamer1-plugins-base glib2 libxcb libxkbcommon libxkbcommon-x11 vulkan-loader`
+- Arch Linux：`sudo pacman -S --needed gstreamer gst-plugins-base-libs glib2 libxcb libxkbcommon libxkbcommon-x11 vulkan-icd-loader`
+
+試した範囲：この方法で（素の Ubuntu 22.04 の中で）ビルドした tarball を、必要なライブラリが 1 つも入っていない Ubuntu 22.04、Ubuntu 24.04、Fedora 44 の基本イメージと、CachyOS（Arch 系）に、上のスクリプトで導入しました。前の 3 つでは、`install.sh` が足りないライブラリを挙げ、表示されたコマンドでそれらが入り、そのあと `ibisOffice --export png` が Mesa のソフトウェア Vulkan ドライバーでスライドを描きました。CachyOS では足りないものはなく、同じ書き出しがグラフィックス カードで動きました。Debian、openSUSE などほかのディストリビューションは試していません。アプリのウィンドウを試したのは CachyOS（Hyprland）だけです。
+
 #### ビルドに必要なパッケージ
 
 Arch Linux：
@@ -166,7 +193,7 @@ sudo apt install build-essential pkg-config git python3 libfontconfig-dev \
 
 Rust の最新の stable が要ります。`python3` は `scripts/bundle-linux.sh`（サードパーティのライセンス一覧の生成）に使います。実行には、グラフィックス カードの Vulkan ドライバーも要ります。
 
-Arch の一覧は、ビルドがリンクまたは読み込むライブラリです。それらが導入済みの Arch 系の環境で確かめたもので、新規に導入した環境では試していません。Debian / Ubuntu のパッケージ名は試していません。
+Debian / Ubuntu の一覧は、リリースのワークフロー（`.github/workflows/release-linux.yml`）が Ubuntu 22.04 でリリースをビルドするときに入れるものです。Arch の一覧は、ビルドがリンクまたは読み込むライブラリです。それらが導入済みの Arch 系の環境で確かめたもので、新規に導入した環境では試していません。
 
 #### ビルド
 
@@ -255,11 +282,13 @@ cd ibisOffice
 
 #### 自動更新
 
-起動時に GitHub のリポジトリで新しい版を確かめます（設定 ＞「起動時に更新を確かめる」、既定でオン）。リポジトリの `main` ブランチの `version.txt` を読み、対応するリリース（タグ `v<版>`）から tarball（`ibisOffice-<版>-Linux-<arch>.tar.gz`）とその `.sha256` をダウンロードし、`sha256sum` でハッシュを検証してから、`ibisOfficeUpdater` が導入されたフォルダを置き換えます。`curl`・`tar`・`sha256sum` が `PATH` に必要です。
+起動時に GitHub のリポジトリで新しい版を確かめます（設定 ＞「起動時に更新を確かめる」、既定でオン）。そのリポジトリのブランチの `version.txt` を読み、対応するリリース（タグ `v<版>`）から tarball（`ibisOffice-<版>-Linux-<arch>.tar.gz`）とその `.sha256` をダウンロードし、`sha256sum` でハッシュを検証してから、`ibisOfficeUpdater` が導入されたフォルダを置き換えます。`curl`・`tar`・`sha256sum` が `PATH` に必要です。
 
 更新のログは `$XDG_STATE_HOME/ibisOffice/updater.log`（既定は `~/.local/state/ibisOffice/updater.log`）にあります。ヘルプ ＞ 更新のログを表示 で開きます。
 
 `target/` から実行した開発ビルド、書き込めないフォルダにある導入（`--prefix` で入れたもの）、`ibisOffice` フォルダの中にいない実行ファイルからは、更新は行われません。同じ版で 2 回失敗すると、その版は提示されなくなります。
+
+このフォークのリリースは `lunagoat/ibis-office` を見に行き、その既定のブランチ（`linux`）の `version.txt` を読みます。自分でビルドしたものは、ほかを指定しない限り、ibis inc. のリポジトリ `ibisjp/ibis-office` の `main` ブランチを見に行きます。
 
 **フォークの管理者向け：** ビルド時にリポジトリを指定します。
 
@@ -275,11 +304,14 @@ IBIS_UPDATE_REPO=owner/repo scripts/bundle-linux.sh
 
 `version.txt` のあるブランチが `main` でない場合は `IBIS_UPDATE_BRANCH` も指定します。上流のリポジトリ（`ibisjp/ibis-office`）の `version.txt` には `Linux` の行がないので、それを見に行くビルドには何も提示されません。
 
-更新で見つかるリリースの作り方：
+更新と `scripts/install-linux.sh` が見つけるリリースの作り方：
 
-1. `version.txt` の `Linux` の行を新しい版号（数字とドットだけ）に変える。
-2. コミットに `v<版>` のタグを付ける。
-3. GitHub のリリースに `ibisOffice-<版>-Linux-<arch>.tar.gz` と `ibisOffice-<版>-Linux-<arch>.tar.gz.sha256`（`scripts/bundle-linux.sh` が作るもの）を添付する。
+1. `version.txt` の `Linux` の行を新しい版号（数字とドットだけ）に変え、コミットして既定のブランチにプッシュする。このフォークはリリースに `<上流の版>.<n>` という番号を付けます（`0.8.1.1` は上流の 0.8.1 に対する最初のリリース）。タグが上流のものと重ならないようにするためです。
+2. そのコミットに `v<版>` のタグを付け、タグをプッシュする。
+
+タグをプッシュすると、リリースのワークフロー（`.github/workflows/release-linux.yml`）が始まります。Ubuntu 22.04 で、`IBIS_UPDATE_REPO` を実行中のリポジトリに、`IBIS_UPDATE_BRANCH` をその既定のブランチにして tarball をビルドし、確認として導入してプレゼンテーションを書き出したうえで、`ibisOffice-<版>-Linux-x86_64.tar.gz` とその `.sha256` を GitHub のリリース `v<版>` に添付します。ワークフローはリポジトリの Actions ページからも始められます。その場合、タグはワークフローが作ります。ワークフローを使わずに公開するには、`scripts/bundle-linux.sh` が作る 2 つのファイルを、`v<版>` のタグが付いたリリースに添付します。
+
+このリポジトリをフォークした場合は、`scripts/install-linux.sh` の先頭の `REPO` と、この節のアドレスも自分のリポジトリに変えてください。
 
 #### コマンドラインでの書き出しと印刷
 
@@ -293,7 +325,8 @@ ibisOffice はデスクトップにウィンドウのタイトルバーを描か
 
 - シナリオ テスト（`cargo test --release -p ibis-office-app --test scenarios`）は Linux で動きますが、923 件のうち 875 件はスキップされます。開く文書（`test/editing/`）が公開リポジトリにないためです。残りの 48 件は通ります。
 - デバッグ ビルドは一部のファイルで上流の `debug_assert!` に引っかかります。リリース ビルドを使ってください。
-- `IBIS_UPDATE_REPO` で Linux のリリースを公開するリポジトリを指定しない限り、自動更新は何も提示しません。
+- 公開しているリリースは x86_64、glibc 2.35 以降向けです。aarch64 向けと musl 向けのビルドはありません。
+- 自分でビルドしたものは、Linux のリリースを公開するリポジトリを（`IBIS_UPDATE_REPO` で）指定しない限り、更新を提示されません。
 - 動画・音声にはクリップのコーデックの GStreamer プラグインが必要です。プラグインがないクリップは再生されません。
 - GNOME の Wayland セッションでアプリが描くクライアントサイドのタイトルバーは、GNOME では試されていません。
 

@@ -233,3 +233,74 @@ if [ -z "$system" ]; then
         command -v "$tool" > /dev/null 2>&1 || warn "$tool is not installed: ibisOffice needs it to update itself"
     done
 fi
+
+# The libraries the program is linked with, and the one it loads as it starts
+# (Vulkan's): those this system does not have are named, with the command that
+# installs them where the package manager is one known here. Nothing is
+# installed from this script.
+missing=
+if command -v ldd > /dev/null 2>&1; then
+    linked=$(ldd "$app_dir/ibisOffice" 2>&1) || true
+    case $linked in
+        *GLIBC_*'not found'*) warn 'this build needs a newer C library (glibc) than this system has: ibisOffice will not start. The README says how to build it here.' ;;
+    esac
+    missing=$(printf '%s\n' "$linked" | sed -n 's/^[[:space:]]*\(lib[^[:space:]]*\) => not found.*/\1/p' | sort -u | tr '\n' ' ')
+fi
+# ldconfig is often outside a user's PATH.
+known=$({ ldconfig -p || /sbin/ldconfig -p; } 2> /dev/null) || known=
+if [ -n "$known" ]; then
+    printf '%s\n' "$known" | grep -q '^[[:space:]]*libvulkan\.so\.1 ' || missing="${missing}libvulkan.so.1 "
+fi
+
+# The package a library is in, as apt and as pacman name it.
+deb_of() {
+    case $1 in
+        libgstreamer-1.0.so.0 | libgstbase-1.0.so.0) echo libgstreamer1.0-0 ;;
+        libgstapp-1.0.so.0 | libgstvideo-1.0.so.0) echo libgstreamer-plugins-base1.0-0 ;;
+        libglib-2.0.so.0 | libgobject-2.0.so.0 | libgio-2.0.so.0) echo libglib2.0-0 ;;
+        libxcb.so.1) echo libxcb1 ;;
+        libxkbcommon.so.0) echo libxkbcommon0 ;;
+        libxkbcommon-x11.so.0) echo libxkbcommon-x11-0 ;;
+        libvulkan.so.1) echo libvulkan1 ;;
+    esac
+}
+pacman_of() {
+    case $1 in
+        libgstreamer-1.0.so.0 | libgstbase-1.0.so.0) echo gstreamer ;;
+        libgstapp-1.0.so.0 | libgstvideo-1.0.so.0) echo gst-plugins-base-libs ;;
+        libglib-2.0.so.0 | libgobject-2.0.so.0 | libgio-2.0.so.0) echo glib2 ;;
+        libxcb.so.1) echo libxcb ;;
+        libxkbcommon.so.0) echo libxkbcommon ;;
+        libxkbcommon-x11.so.0) echo libxkbcommon-x11 ;;
+        libvulkan.so.1) echo vulkan-icd-loader ;;
+    esac
+}
+
+if [ -n "$missing" ]; then
+    warn "ibisOffice needs these libraries, and this system does not have them: ${missing% }"
+    packages=
+    if command -v apt-get > /dev/null 2>&1; then
+        for lib in $missing; do packages="$packages$(deb_of "$lib")
+"; done
+        packages=$(printf '%s' "$packages" | sort -u | tr '\n' ' ')
+        tool='sudo apt install'
+    elif command -v pacman > /dev/null 2>&1; then
+        for lib in $missing; do packages="$packages$(pacman_of "$lib")
+"; done
+        packages=$(printf '%s' "$packages" | sort -u | tr '\n' ' ')
+        tool='sudo pacman -S'
+    elif command -v dnf > /dev/null 2>&1; then
+        # rpm knows a package by the libraries in it.
+        for lib in $missing; do packages="$packages'$lib()(64bit)' "; done
+        tool='sudo dnf install'
+    elif command -v zypper > /dev/null 2>&1; then
+        for lib in $missing; do packages="$packages'$lib()(64bit)' "; done
+        tool='sudo zypper install --capability'
+    fi
+    packages=$(printf '%s' "$packages" | sed -e 's/^ *//' -e 's/ *$//')
+    if [ -n "$packages" ]; then
+        warn "install them with: $tool $packages"
+    else
+        warn 'install the packages of your distribution that have them'
+    fi
+fi

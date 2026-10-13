@@ -3,11 +3,16 @@
 All notable changes to ibisOffice are recorded in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.8.1.1] - 2026-10-13
+
+The first release for Linux, published by the fork [lunagoat/ibis-office](https://github.com/lunagoat/ibis-office/releases). Its Linux releases are numbered `<upstream version>.<n>`.
 
 ### Added
 
 - A desktop app for Linux, packaged by `scripts/bundle-linux.sh` as `ibisOffice-<version>-Linux-<arch>.tar.gz` (built and tried on x86_64 only).
+  - Releases on GitHub for x86_64, built on Ubuntu 22.04 (they run with glibc 2.35 or later) by a workflow when a `v<version>` tag is pushed.
+  - One command downloads the newest release, checks its SHA-256 and installs it: `curl -fsSL https://raw.githubusercontent.com/lunagoat/ibis-office/HEAD/scripts/install-linux.sh | sh`.
+  - `install.sh` names the libraries the system does not have and the command that installs them (apt, dnf, pacman, zypper).
   - Vulkan rendering through GPUI's wgpu backend.
   - `install.sh` installs for the current user or, with `--prefix`, system-wide; `uninstall.sh` removes it.
   - Spell checking with the Hunspell dictionaries installed on the system (no C library linked; `$DICPATH` and the XDG data directories are searched). A personal word list is kept beside the settings.
