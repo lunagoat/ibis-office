@@ -175,6 +175,9 @@ impl SlideEditor {
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(std::time::Duration::from_millis(FRAME_MS)).await;
             let alive = this.update(cx, |this, cx| this.poll_clips(cx)).unwrap_or(false);
+            // The frames replaced or taken away since the last tick are images GPUI still holds (Linux).
+            #[cfg(all(target_os = "linux", feature = "media"))]
+            cx.update(crate::media_player::release_frames);
             if !alive {
                 break;
             }

@@ -83,15 +83,27 @@ ashpd = { version = "0.13", default-features = false, features = ["async-io", "p
 # the dictionaries not in UTF-8 read (the version ibis-pptx already uses).
 spellbook = "0.4.2"
 encoding_rs = "0.8"
+# 動画・音声の再生 (media_player/linux.rs): GStreamer through its Rust
+# bindings (MIT OR Apache-2.0). They link the system's GStreamer, which is
+# LGPL: the Linux port allows that for a system library, and a build without
+# the feature has none of it.
+gstreamer = { version = "0.25", optional = true }
+gstreamer-app = { version = "0.25", optional = true }
+gstreamer-video = { version = "0.25", optional = true }
 
 [features]
-default = ["export"]
+default = ["export", "media"]
 # The scenario tests' driver (`src/shell/scenario.rs`), for tests/scenarios.rs;
 # turned on for this crate's own tests by the dev-dependency below.
 scenarios = ["export"]
 # `--export png|pdf|pdf-image|ui` on the command line (macOS, Windows and
 # Linux; build.rs sets `cfg(headless_export)` for it).
 export = ["dep:gpui-pre-platform", "dep:gpui-pre-windows", "dep:gpui-pre-wgpu", "dep:cosmic-text", "dep:image", "dep:miniz_oxide", "dep:krilla", "dep:skrifa", "dep:subsetter", "dep:gpui-pre-macos"]
+# Videos and audio played on Linux, by the system's GStreamer (its
+# development files are needed to build; `--no-default-features --features
+# export` builds without them, and clips then play nothing). A video's frames
+# are handed to GPUI as images. The other platforms build nothing for it.
+media = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video", "dep:image"]
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 # Reading a fetched response's body (the art borders' pictures); the version

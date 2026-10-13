@@ -4,7 +4,9 @@
 //! 動画・音声の再生: a clip played by the system's player (AVFoundation's
 //! `AVPlayer` on macOS). A video's frames are taken one by one from an
 //! `AVPlayerItemVideoOutput` as the CoreVideo buffers GPUI draws as a
-//! surface. Other platforms play nothing yet (`Player::open` is `None`).
+//! surface. On Linux GStreamer plays it (`linux.rs`, with the `media`
+//! feature), a video's frames drawn as images. Other platforms play nothing
+//! yet (`Player::open` is `None`).
 
 #[cfg(target_os = "macos")]
 pub(crate) use mac::{Frame, Player, video_aspect};
@@ -12,7 +14,12 @@ pub(crate) use mac::{Frame, Player, video_aspect};
 #[cfg(all(target_os = "macos", feature = "scenarios"))]
 pub(crate) use mac::run_loop;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(target_os = "linux", feature = "media"))]
+pub(crate) use linux::{Frame, Player, release_frames, video_aspect};
+#[cfg(all(target_os = "linux", feature = "media"))]
+mod linux;
+
+#[cfg(not(any(target_os = "macos", all(target_os = "linux", feature = "media"))))]
 pub(crate) use other::{Frame, Player, video_aspect};
 
 #[cfg(target_os = "macos")]
@@ -261,11 +268,11 @@ mod mac {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", all(target_os = "linux", feature = "media"))))]
 mod other {
     use std::path::Path;
 
-    /// No frames are taken off macOS.
+    /// No frames are taken where nothing plays.
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub(crate) struct Frame;
 

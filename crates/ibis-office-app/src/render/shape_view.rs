@@ -173,7 +173,7 @@ impl Resources {
         self.live.borrow().contains_key(&media)
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", all(target_os = "linux", feature = "media")))]
     fn live_frame(&self, media: MediaId) -> Option<crate::media_player::Frame> {
         self.live.borrow().get(&media).cloned()
     }
@@ -3115,6 +3115,22 @@ fn picture_element(container: Div, shape: &Shape, picture: &Picture, frame: EmuR
             .rounded(radius)
             .overflow_hidden()
             .child(gpui::surface(live).absolute().size_full().object_fit(ObjectFit::Fill))
+            .children(outline);
+        if let Some(s) = picture.shadow {
+            let (dx, dy, blur, color) = shadow_parts(s, scale);
+            el = el.shadow(vec![BoxShadow { color, offset: point(px(dx), px(dy)), blur_radius: px(blur / 3.0), spread_radius: px(0.), inset: false }]);
+        }
+        return el;
+    }
+    // The same on Linux, where GPUI draws no surfaces: the frame is an image.
+    #[cfg(all(target_os = "linux", feature = "media"))]
+    if let Some(ref clip) = picture.clip
+        && let Some(live) = res.live_frame(clip.media)
+    {
+        let mut el = container
+            .rounded(radius)
+            .overflow_hidden()
+            .child(img(live).absolute().size_full().rounded(radius).object_fit(ObjectFit::Fill))
             .children(outline);
         if let Some(s) = picture.shadow {
             let (dx, dy, blur, color) = shadow_parts(s, scale);
