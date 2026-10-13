@@ -193,7 +193,7 @@ sudo apt install build-essential pkg-config git python3 libfontconfig-dev \
 
 Rust の最新の stable が要ります。`python3` は `scripts/bundle-linux.sh`（サードパーティのライセンス一覧の生成）に使います。実行には、グラフィックス カードの Vulkan ドライバーも要ります。
 
-Debian / Ubuntu の一覧は、リリースのワークフロー（`.github/workflows/release-linux.yml`）が Ubuntu 22.04 でリリースをビルドするときに入れるものです。Arch の一覧は、ビルドがリンクまたは読み込むライブラリです。それらが導入済みの Arch 系の環境で確かめたもので、新規に導入した環境では試していません。
+Debian / Ubuntu の一覧は、素の Ubuntu 22.04 でリリースをビルドするのに足りたものです。リリースのワークフロー（`.github/workflows/release-linux.yml`）も、Ubuntu 22.04 のランナーにこれを入れます。Arch の一覧は、ビルドがリンクまたは読み込むライブラリです。それらが導入済みの Arch 系の環境で確かめたもので、新規に導入した環境では試していません。
 
 #### ビルド
 

@@ -193,7 +193,7 @@ sudo apt install build-essential pkg-config git python3 libfontconfig-dev \
 
 The latest stable Rust is required. `python3` is needed by `scripts/bundle-linux.sh` (it generates the third-party licence list). To run the program you also need a Vulkan driver for your graphics card.
 
-The Debian / Ubuntu list is what the release workflow (`.github/workflows/release-linux.yml`) installs on Ubuntu 22.04 to build the release. The Arch list is the set of libraries the build links or loads. It was checked on an Arch-based system that already had them installed, not on a fresh install.
+The Debian / Ubuntu list was enough to build the release in a clean Ubuntu 22.04 root folder, and the release workflow (`.github/workflows/release-linux.yml`) installs it on its Ubuntu 22.04 runner. The Arch list is the set of libraries the build links or loads. It was checked on an Arch-based system that already had them installed, not on a fresh install.
 
 #### Build
 

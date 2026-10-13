@@ -59,17 +59,22 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      # The packages of the README's "Build dependencies" for Debian and Ubuntu.
+      # The packages of the README's "Build dependencies" for Debian and
+      # Ubuntu. libunwind-dev is named with them for the runner's sake: its
+      # image has LLVM's libunwind-14-dev, which stands in the way of the one
+      # libgstreamer1.0-dev depends on until that one is asked for by name.
       - name: What the build needs
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config git python3 \
-            libfontconfig-dev libfreetype-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
-            libwayland-dev libvulkan1 libglib2.0-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          {
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              build-essential pkg-config git python3 \
+              libfontconfig-dev libfreetype-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
+              libwayland-dev libvulkan1 libglib2.0-dev \
+              libunwind-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+            rustup toolchain install stable --profile minimal
+            rustup default stable
+          } 2>&1 | tee setup.log
 
       # The automatic update of this build asks the repository it was built in.
       - name: Build the tarball
@@ -78,29 +83,27 @@ jobs:
           IBIS_UPDATE_BRANCH: ${{ github.event.repository.default_branch }}
         run: scripts/bundle-linux.sh 2>&1 | tee build.log
 
-      # Shown at the top of the run's page, without opening the log.
-      - name: The end of the build log, if it failed
-        if: failure()
-        run: |
-          [[ -f build.log ]] || exit 0
-          tail -n 30 build.log | awk 'BEGIN { printf "::error title=The end of the build log::" } { gsub(/%/, "%25"); printf "%s%%0A", $0 } END { print "" }'
-
       # Installed in a folder of its own: every library it is linked with is
       # found, and a presentation is drawn with no display (Mesa's software Vulkan).
       - name: Try the tarball
         run: |
-          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
-          mkdir -p try/home try/out
-          tar -xzf target/release/ibisOffice-${{ steps.version.outputs.version }}-Linux-*.tar.gz -C try
-          HOME=$PWD/try/home XDG_DATA_HOME= try/ibisOffice/install.sh
-          app=try/home/.local/lib/ibisOffice/ibisOffice
-          if ldd "$app" | grep 'not found'; then
-            echo "::error::the program is linked with libraries the runner does not have"
-            exit 1
-          fi
-          HOME=$PWD/try/home "$app" --export png --out-dir try/out --slides 1 test/benchmark/earnings-presentation.pptx
-          ls -l try/out
-          [[ -n $(find try/out -name '*.png' -size +1k) ]]
+          {
+            sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
+            mkdir -p try/home try/out
+            tar -xzf target/release/ibisOffice-${{ steps.version.outputs.version }}-Linux-*.tar.gz -C try
+            HOME=$PWD/try/home XDG_DATA_HOME= try/ibisOffice/install.sh
+            app=try/home/.local/lib/ibisOffice/ibisOffice
+            if ldd "$app" | grep 'not found'; then
+              echo "the program is linked with libraries the runner does not have"
+              exit 1
+            fi
+            HOME=$PWD/try/home "$app" --export png --out-dir try/out --slides 1 test/benchmark/earnings-presentation.pptx
+            ls -l try/out
+            if [[ -z $(find try/out -name '*.png' -size +1k) ]]; then
+              echo "no slide was exported"
+              exit 1
+            fi
+          } 2>&1 | tee try.log
 
       - name: Publish the release
         env:
@@ -118,4 +121,13 @@ jobs:
           gh release create "v$VERSION" \
             target/release/ibisOffice-"$VERSION"-Linux-*.tar.gz \
             target/release/ibisOffice-"$VERSION"-Linux-*.tar.gz.sha256 \
-            --target "$GITHUB_SHA" --title "ibisOffice $VERSION for Linux" --notes-file notes.md
+            --target "$GITHUB_SHA" --title "ibisOffice $VERSION for Linux" --notes-file notes.md 2>&1 | tee publish.log
+
+      # Shown at the top of the run's page, without opening the log: the end
+      # of the log of the step that failed (the newest of them).
+      - name: The end of the log, if a step failed
+        if: failure()
+        run: |
+          log=$(ls -t setup.log build.log try.log publish.log 2> /dev/null | head -n 1) || true
+          [[ -n $log ]] || exit 0
+          tail -n 30 "$log" | awk -v title="The end of $log" 'BEGIN { printf "::error title=%s::", title } { gsub(/%/, "%25"); gsub(/\r/, ""); printf "%s%%0A", $0 } END { print "" }'
