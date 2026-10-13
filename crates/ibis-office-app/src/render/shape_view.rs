@@ -498,6 +498,31 @@ const TYPEFACE_ALIASES: &[(&str, &str)] = &[
     ("ＭＳ ゴシック", "MS Gothic"), // i18n-ok（フォント名の対応表（ファイルに保存されるフォント名）。font_label の対）
     ("ＭＳ Ｐ明朝", "MS PMincho"), // i18n-ok（フォント名の対応表（ファイルに保存されるフォント名）。font_label の対）
     ("ＭＳ 明朝", "MS Mincho"), // i18n-ok（フォント名の対応表（ファイルに保存されるフォント名）。font_label の対）
+    // Linux has none of Office's typefaces unless the user installs them.
+    // The fonts made with their widths stand in, so lines break where they
+    // do in Office: Liberation (and Croscore's Arimo, Tinos, Cousine) for
+    // Arial, Times New Roman and Courier New, Caladea for Cambria (Carlito
+    // for Calibri is above), and the IPA fonts, of ＭＳ ゴシック's and
+    // ＭＳ 明朝's fixed widths.
+    ("Arial", "Liberation Sans"),
+    ("Arial", "Arimo"),
+    ("Helvetica", "Liberation Sans"),
+    ("Helvetica", "Arimo"),
+    ("Times New Roman", "Liberation Serif"),
+    ("Times New Roman", "Tinos"),
+    ("Century", "Liberation Serif"),
+    ("Century", "Tinos"),
+    ("Courier New", "Liberation Mono"),
+    ("Courier New", "Cousine"),
+    ("Cambria", "Caladea"),
+    ("ＭＳ ゴシック", "IPAGothic"), // i18n-ok（フォント名の対応表（ファイルに保存されるフォント名）。font_label の対）
+    ("MS Gothic", "IPAGothic"),
+    ("ＭＳ Ｐゴシック", "IPAPGothic"), // i18n-ok（フォント名の対応表（ファイルに保存されるフォント名）。font_label の対）
+    ("MS PGothic", "IPAPGothic"),
+    ("ＭＳ 明朝", "IPAMincho"), // i18n-ok（フォント名の対応表（ファイルに保存されるフォント名）。font_label の対）
+    ("MS Mincho", "IPAMincho"),
+    ("ＭＳ Ｐ明朝", "IPAPMincho"), // i18n-ok（フォント名の対応表（ファイルに保存されるフォント名）。font_label の対）
+    ("MS PMincho", "IPAPMincho"),
 ];
 
 /// For the web build: the typefaces the document asks for, under the names
@@ -688,7 +713,8 @@ impl Fonts {
                 log::warn!("bundled fonts could not be loaded: {err}");
             }
         }
-        let east_asian_fallback = ["Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans CJK JP"]
+        // The last five are what a Linux system has for Japanese.
+        let east_asian_fallback = ["Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans CJK JP", "Noto Sans JP", "Source Han Sans JP", "IPAexGothic", "IPAGothic"]
             .into_iter()
             .find(|f| installed.contains(*f))
             .map(SharedString::from);
@@ -754,7 +780,7 @@ impl Fonts {
         let weight = WEIGHT_SUFFIXES.iter().find(|(suffix, _)| name.ends_with(suffix)).map(|(_, w)| *w).unwrap_or(FontWeight::NORMAL);
         // A Mincho (serif) typeface gives way to an installed Mincho.
         if (name.contains("明朝") || name.contains("Mincho")) // i18n-ok（フォント名の照合（部分一致で明朝を判定）。i18n-ok）
-            && let Some(mincho) = ["Hiragino Mincho ProN", "YuMincho", "BIZ UDMincho"].into_iter().find(|f| self.installed.contains(*f))
+            && let Some(mincho) = ["Hiragino Mincho ProN", "YuMincho", "BIZ UDMincho", "Noto Serif CJK JP", "Noto Serif JP", "Source Han Serif JP", "IPAexMincho", "IPAMincho"].into_iter().find(|f| self.installed.contains(*f))
         {
             return (mincho.into(), weight);
         }
@@ -3691,3 +3717,49 @@ impl Resources {
     }
 }
 
+
+#[cfg(test)]
+mod font_tests {
+    // Not `super::*`: GPUI's own `test` attribute would take the place of `#[test]`.
+    use super::{FontWeight, Fonts};
+
+    fn fonts(installed: &[&str]) -> Fonts {
+        Fonts { installed: installed.iter().map(|f| f.to_string()).collect(), east_asian_fallback: None }
+    }
+
+    #[test]
+    fn a_linux_system_draws_office_typefaces_with_the_fonts_of_their_widths() {
+        let linux = fonts(&["Liberation Sans", "Liberation Serif", "Liberation Mono", "Carlito", "Caladea", "IPAGothic", "IPAMincho", "Noto Sans CJK JP"]);
+        let family = |name: &str| linux.available(name).map(|(family, _)| family.to_string());
+        assert_eq!(family("Arial").as_deref(), Some("Liberation Sans"));
+        assert_eq!(family("Times New Roman").as_deref(), Some("Liberation Serif"));
+        assert_eq!(family("Century").as_deref(), Some("Liberation Serif"));
+        assert_eq!(family("Courier New").as_deref(), Some("Liberation Mono"));
+        assert_eq!(family("Calibri").as_deref(), Some("Carlito"));
+        assert_eq!(family("Cambria").as_deref(), Some("Caladea"));
+        // Both of the names Office writes for it.
+        assert_eq!(family("ＭＳ ゴシック").as_deref(), Some("IPAGothic")); // i18n-ok（フォント名。訳さない）
+        assert_eq!(family("MS Gothic").as_deref(), Some("IPAGothic"));
+        assert_eq!(family("MS Mincho").as_deref(), Some("IPAMincho"));
+        // A weight in the name stays a weight.
+        assert_eq!(linux.available("Arial Bold").map(|(family, weight)| (family.to_string(), weight)), Some(("Liberation Sans".to_string(), FontWeight::BOLD)));
+        // No font of its widths: not available (the caller falls back).
+        assert_eq!(family("Meiryo"), None);
+    }
+
+    #[test]
+    fn an_installed_typeface_is_drawn_with_itself() {
+        let both = fonts(&["Arial", "Liberation Sans", "MS Gothic", "IPAGothic"]);
+        assert_eq!(both.available("Arial").map(|(family, _)| family.to_string()).as_deref(), Some("Arial"));
+        assert_eq!(both.available("MS Gothic").map(|(family, _)| family.to_string()).as_deref(), Some("MS Gothic"));
+        // The file's name for it finds the installed one before a stand-in.
+        assert_eq!(both.available("ＭＳ ゴシック").map(|(family, _)| family.to_string()).as_deref(), Some("MS Gothic")); // i18n-ok（フォント名。訳さない）
+    }
+
+    #[test]
+    fn a_mincho_typeface_gives_way_to_a_serif_japanese_font() {
+        let linux = fonts(&["Noto Sans CJK JP", "Noto Serif CJK JP"]);
+        assert_eq!(linux.family("游明朝").0.as_ref(), "Noto Serif CJK JP"); // i18n-ok（フォント名。訳さない）
+        assert_eq!(linux.family("HG明朝E").0.as_ref(), "Noto Serif CJK JP"); // i18n-ok（フォント名。訳さない）
+    }
+}

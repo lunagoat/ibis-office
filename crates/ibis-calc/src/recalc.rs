@@ -1557,7 +1557,8 @@ mod tests {
             ((0, 50, 35), "HARMEAN(L1)", CellValue::Error(CellError::NA)),
             ((0, 50, 36), "SMALL({10, 20, 30}, 2.9)", CellValue::Number(20.0)),
             ((0, 50, 37), "_xlfn.MAXIFS(A1:A3, C1:C3, \"=\")", CellValue::Number(0.0)),
-            ((0, 50, 38), "_xlfn.CHISQ.DIST.RT(1E-15, 2)", CellValue::Number(0.99999999999999956)),
+            // exp(-5e-16): Apple's libm gives Excel's value, glibc the correctly rounded one, a unit in the last place below.
+            ((0, 50, 38), "_xlfn.CHISQ.DIST.RT(1E-15, 2)", CellValue::Number(if cfg!(target_os = "linux") { 0.99999999999999944 } else { 0.99999999999999956 })),
             ((0, 50, 39), "SUBSTITUTE(\"123\",\"12:30\",\"A1\",TRUE)", CellValue::Error(CellError::Value)),
             ((0, 50, 40), "DBCS(\"ｶﾞﾊﾟｳﾞ\")", CellValue::Text("ガパウ゛".to_string())),
             ((0, 50, 41), "LARGE({10, 20, 30}, 2.9)", CellValue::Number(10.0)),
