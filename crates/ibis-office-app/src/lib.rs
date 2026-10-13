@@ -844,8 +844,12 @@ pub fn run_native() {
             None => state.1.extend(paths),
         }
     });
-    application
-        .run(move |cx| {
+    // The event loop returns when the app quits on Linux (on macOS the
+    // process ends inside it). The app is kept, not dropped: dropping it
+    // runs GPUI's leak tracking (on with the `export` feature's test
+    // support), which panics over the handles still held at exit.
+    let app = application
+        .run_embedded(move |cx| {
             {
                 let mut state = opener.borrow_mut();
                 state.0 = Some(cx.to_async());
@@ -907,6 +911,7 @@ pub fn run_native() {
                     .ok();
             }
         });
+    std::mem::forget(app);
 }
 
 #[cfg(target_family = "wasm")]

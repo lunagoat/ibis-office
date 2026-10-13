@@ -1700,6 +1700,12 @@ impl SlideEditor {
         }
     }
 
+    /// The window's title as the desktop shows it, for the title bar the
+    /// window draws itself where the desktop draws none (`window_frame`).
+    pub(crate) fn window_title(&self) -> String {
+        format!("{} - ibisOffice", self.display_title_formatted())
+    }
+
     pub(crate) fn display_title_formatted(&self) -> String {
         let base = self.file_name.as_ref().map(|s| s.to_string()).unwrap_or_else(|| {
             if self.is_workbook() {
@@ -3253,9 +3259,12 @@ impl SlideEditor {
         // and the toolbar (the first two hidden by the toolbar's ^), the
         // document with the sidebar on its right, and the status bar.
         if !self.has_document {
-            window.set_window_title(&crate::shell::start_view::start_title());
-            return d.child(self.render_title_row(cx)).child(self.render_start_view(cx));
+            let title = crate::shell::start_view::start_title();
+            window.set_window_title(&title);
+            return d.children(crate::shell::window_frame::title_bar(title, window)).child(self.render_title_row(cx)).child(self.render_start_view(cx));
         }
+        // The window's own title bar, where the desktop draws none (Linux: `window_frame`).
+        let d = d.children(crate::shell::window_frame::title_bar(self.window_title(), window));
         let compact = self.chrome_compact;
         let focus = self.is_focus_mode();
         let body = with_format!(self, render_body(self, window, cx));

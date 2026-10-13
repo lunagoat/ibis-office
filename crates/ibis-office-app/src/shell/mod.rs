@@ -48,6 +48,7 @@ pub(crate) mod menu_bridge;
 #[cfg(all(target_os = "macos", feature = "scenarios"))]
 pub(crate) mod scenario_fix;
 pub(crate) mod start_view;
+pub(crate) mod window_frame;
 pub(crate) mod workspace;
 
 /// The old name of the status bar's module, which the formats' code may
